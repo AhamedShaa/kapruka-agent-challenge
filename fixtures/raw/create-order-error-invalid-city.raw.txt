@@ -1,0 +1,16 @@
+__THREW__: Kapruka API Error [kapruka_create_order]: Error executing tool kapruka_create_order: 5 validation errors for kapruka_create_orderArguments
+params.recipient.address
+  Extra inputs are not permitted [type=extra_forbidden, input_value='1 Test Road', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden
+params.recipient.city
+  Extra inputs are not permitted [type=extra_forbidden, input_value='Atlantis', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden
+params.delivery.address
+  Field required [type=missing, input_value={'date': '2026-06-25'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+params.delivery.city
+  Field required [type=missing, input_value={'date': '2026-06-25'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/missing
+params.sender.phone
+  Extra inputs are not permitted [type=extra_forbidden, input_value='0771234567', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden

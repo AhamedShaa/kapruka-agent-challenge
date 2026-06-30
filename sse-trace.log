@@ -1,0 +1,76 @@
+data: {"type":"render","event":{"type":"PRODUCT_LIST","products":[{"id":"FLOWERS00T2075","name":"6 Red Rose Bouquet With Elegant Wrapping","price":5210,"currency":"LKR","image_url":"https://www.kapruka.com/buyonline/6-red-rose-bouquet-with-elegan/kid/flowers00t2075","category":"flowers","description":"","visual_description":"","in_stock":true},{"id":"FLOWERS00T2089","name":"Red Heart Gift Box Arrangement With Red Roses Ferrero Rocher Cho","price":12560,"currency":"LKR","image_url":"https://www.kapruka.com/buyonline/red-heart-gift-box-arrangement/kid/flowers00t2089","category":"flowers","description":"","visual_description":"","in_stock":true},{"id":"FLOWERS00T1995","name":"Tuxedo Roses Bouquet With 25 Red Roses And 10 White Roses","price":14720,"currency":"LKR","image_url":"https://www.kapruka.com/buyonline/tuxedo-roses-bouquet-with-25-r/kid/flowers00t1995","category":"flowers","description":"","visual_description":"","in_stock":true},{"id":"FLOWERS00T1920","name":"Fifty Shades Of Red Bouquet With 50 Red Roses","price":23080,"currency":"LKR","image_url":"https://www.kapruka.com/buyonline/fifty-shades-of-red-bouquet-wi/kid/flowers00t1920","category":"flowers","description":"","visual_description":"","in_stock":true},{"id":"FLOWERS00T1384","name":"`love Me Tender ` Nine Red Rose Bouquet ( Red Rose Bouquet","price":5550,"currency":"LKR","image_url":"https://www.kapruka.com/buyonline/love-me-tender-nine-red-rose-b/kid/flowers00t1384","category":"flowers","description":"","visual_description":"","in_stock":true},{"id":"FLOWERS00T1875","name":"Rose Elegance Display Vase With 30 Red Roses","price":18000,"currency":"LKR","image_url":"https://www.kapruka.com/buyonline/rose-elegance-display-vase-wit/kid/flowers00t1875","category":"flowers","description":"","visual_description":"","in_stock":true},{"id":"FLOWERS00T1878","name":"Crimson Rose Statement Arrangement With 25 Red Roses","price":20250,"currency":"LKR","image_url":"https://www.kapruka.com/buyonline/crimson-rose-statement-arrange/kid/flowers00t1878","category":"flowers","description":"","visual_description":"","in_stock":true},{"id":"FLOWERS00T1901","name":"Golden Vows Bouquet With 50 Red Roses And Kapruka Chocolates","price":28750,"currency":"LKR","image_url":"https://www.kapruka.com/buyonline/golden-vows-bouquet-with-50-re/kid/flowers00t1901","category":"flowers","description":"","visual_description":"","in_stock":true},{"id":"FLOWERS00T1940","name":"Red Aura Tabletop Basket With 6 Red Roses","price":14160,"currency":"LKR","image_url":"https://www.kapruka.com/buyonline/red-aura-tabletop-basket-with-/kid/flowers00t1940","category":"flowers","description":"","visual_description":"","in_stock":true}],"query":"red roses"}}
+
+data: {"type":"token","delta":"Here"}
+
+data: {"type":"token","delta":"'s"}
+
+data: {"type":"token","delta":" what I found —"}
+
+data: {"type":"token","delta":" classic"}
+
+data: {"type":"token","delta":" red roses in"}
+
+data: {"type":"token","delta":" a few"}
+
+data: {"type":"token","delta":" styles"}
+
+data: {"type":"token","delta":"."}
+
+data: {"type":"token","delta":" The "}
+
+data: {"type":"token","delta":"6"}
+
+data: {"type":"token","delta":"-"}
+
+data: {"type":"token","delta":"stem"}
+
+data: {"type":"token","delta":" bouquet is"}
+
+data: {"type":"token","delta":" elegant"}
+
+data: {"type":"token","delta":" and underst"}
+
+data: {"type":"token","delta":"ated, the"}
+
+data: {"type":"token","delta":" heart"}
+
+data: {"type":"token","delta":" gift box comes"}
+
+data: {"type":"token","delta":" with"}
+
+data: {"type":"token","delta":" Ferrero Rocher if"}
+
+data: {"type":"token","delta":" you want something"}
+
+data: {"type":"token","delta":" extra"}
+
+data: {"type":"token","delta":", and the"}
+
+data: {"type":"token","delta":" Tuxedo arrangement"}
+
+data: {"type":"token","delta":" is"}
+
+data: {"type":"token","delta":" a"}
+
+data: {"type":"token","delta":" statement"}
+
+data: {"type":"token","delta":" piece with 25 red and"}
+
+data: {"type":"token","delta":" 10 white roses.\n\nWhich"}
+
+data: {"type":"token","delta":" one feels"}
+
+data: {"type":"token","delta":" right"}
+
+data: {"type":"token","delta":","}
+
+data: {"type":"token","delta":" or should"}
+
+data: {"type":"token","delta":" I check"}
+
+data: {"type":"token","delta":" delivery for one"}
+
+data: {"type":"token","delta":" of these?"}
+
+data: {"type":"done"}
+

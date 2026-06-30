@@ -1,0 +1,39 @@
+
+> kapruka-agent@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.5.19
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.8.116:3000
+   - Environments: .env.local
+   - Experiments (use with caution):
+     · extensionAlias
+
+ ✓ Starting...
+ ✓ Ready in 27.1s
+ ○ Compiling /api/chat ...
+ ✓ Compiled /api/chat in 4.5s (1252 modules)
+[18:25:02.743] [32mINFO[39m (6916): [36mkapruka tool call[39m
+    [35mtool[39m: "kapruka_search_products"
+    [35margs[39m: {
+      "q": "cake"
+    }
+[18:25:04.210] [31mERROR[39m (6916): [36mkapruka tool error[39m
+    [35mtool[39m: "kapruka_search_products"
+    err: "Unexpected response format from \"kapruka_search_products\"."
+[18:25:04.210] [32mINFO[39m (6916): [36mkapruka warm-up call failed (expected on cold connection)[39m
+    err: "Unexpected response format from \"kapruka_search_products\"."
+[18:25:07.448] [32mINFO[39m (6916): [36mkapruka tool call[39m
+    [35mtool[39m: "kapruka_search_products"
+    [35margs[39m: {
+      "q": "red roses"
+    }
+[18:25:08.775] [32mINFO[39m (6916): [36mkapruka tool call succeeded[39m
+    [35mtool[39m: "kapruka_search_products"
+    [35margs[39m: {
+      "q": "red roses"
+    }
+    [35mdurationMs[39m: 1328
+ POST /api/chat 200 in 19290ms
+ ✓ Compiled in 29ms
+ ✓ Compiled in 548ms (195 modules)

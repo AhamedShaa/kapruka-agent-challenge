@@ -1,0 +1,83 @@
+{
+  "products": [
+    {
+      "id": "EF_PC_HOME0V18POD00194P",
+      "name": "Cake Turning Table",
+      "price": 1180,
+      "currency": "LKR",
+      "image_url": "https://www.kapruka.com/buyonline/cake-turning-table/kid/ef_pc_home0v18pod00194p",
+      "category": "ef",
+      "description": "",
+      "visual_description": "",
+      "in_stock": true
+    },
+    {
+      "id": "EF_PC_PART0V44P00022",
+      "name": "Mr And Mrs Cake Topper Gold",
+      "price": 300,
+      "currency": "LKR",
+      "image_url": "https://www.kapruka.com/buyonline/mr-and-mrs-cake-topper-gold/kid/ef_pc_part0v44p00022",
+      "category": "ef",
+      "description": "",
+      "visual_description": "",
+      "in_stock": true
+    },
+    {
+      "id": "EF_PC_ELEC0V4463POD00083FDP",
+      "name": "Tefal Bakeware Floral Geometrics Cake Mould TFBW3030104",
+      "price": 18100,
+      "currency": "LKR",
+      "image_url": "https://www.kapruka.com/buyonline/tefal-bakeware-floral-geometri/kid/ef_pc_elec0v4463pod00083fdp",
+      "category": "ef",
+      "description": "",
+      "visual_description": "",
+      "in_stock": true
+    },
+    {
+      "id": "EF_PC_ELEC0V4463POD00211FDP",
+      "name": "Tefal Bakeware Triangle Geometrics Cake Mold 25cm TFBW3030304",
+      "price": 18200,
+      "currency": "LKR",
+      "image_url": "https://www.kapruka.com/buyonline/tefal-bakeware-triangle-geomet/kid/ef_pc_elec0v4463pod00211fdp",
+      "category": "ef",
+      "description": "",
+      "visual_description": "",
+      "in_stock": true
+    },
+    {
+      "id": "EF_PC_ELEC0V4463POD00139FDP",
+      "name": "Tefal Bakeware Incurve Geometrics Cake Mould 25cm TFBW3030204",
+      "price": 18200,
+      "currency": "LKR",
+      "image_url": "https://www.kapruka.com/buyonline/tefal-bakeware-incurve-geometr/kid/ef_pc_elec0v4463pod00139fdp",
+      "category": "ef",
+      "description": "",
+      "visual_description": "",
+      "in_stock": true
+    },
+    {
+      "id": "EF_PC_HOME0V18POD00583P",
+      "name": "10 Piece Cake Decorating And Fondant Sculpting Tool Set",
+      "price": 750,
+      "currency": "LKR",
+      "image_url": "https://www.kapruka.com/buyonline/10-piece-cake-decorating-and-f/kid/ef_pc_home0v18pod00583p",
+      "category": "ef",
+      "description": "",
+      "visual_description": "",
+      "in_stock": true
+    },
+    {
+      "id": "EF_PC_HOME0V18POD00575P",
+      "name": "14 Inch Stainless Steel Serrated Bread And Cake Knife Multi Purp",
+      "price": 650,
+      "currency": "LKR",
+      "image_url": "https://www.kapruka.com/buyonline/14-inch-stainless-steel-serrat/kid/ef_pc_home0v18pod00575p",
+      "category": "ef",
+      "description": "",
+      "visual_description": "",
+      "in_stock": true
+    }
+  ],
+  "total": 7,
+  "query": "cakes"
+}

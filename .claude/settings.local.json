@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(npm *)",
+      "Bash(curl *)",
+      "Bash(iconv -f utf-16 -t utf-8 \"E:/Kapruka/dev-final.log\")",
+      "Bash(taskkill //F //IM node.exe //T)",
+      "Bash(rm -f \"E:/Kapruka/dev-final.log\" \"E:/Kapruka/kapruka-cart.db\" \"E:/Kapruka/kapruka-cart.db-journal\")"
+    ]
+  }
+}

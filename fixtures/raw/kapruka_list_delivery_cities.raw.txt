@@ -1,0 +1,29 @@
+## Kapruka delivery cities (25 of 332 total)
+
+- **Agalawatta**  _aliases: agalawatha_
+- **Agunukolapelassa**  _aliases: anguna_
+- **Ahangama**
+- **Ahungalla**
+- **Akkareipathuwa**  _aliases: akkerai oluvil oluwil_
+- **Akmeemana**
+- **Akurana**  _aliases: poojap ambathanna pojap_
+- **Akuressa**
+- **Alawwa**
+- **Aluthgama**  _aliases: Aluthama_
+- **Ambalangoda**  _aliases: anbalan UNAGASWELA_
+- **Ambanpola**  _aliases: abanpo_
+- **Ambepussa**  _aliases: abepu_
+- **Ampara**
+- **Anamaduwa**  _aliases: pallama_
+- **Anguruwathota**  _aliases: aguruwat_
+- **Anuradhapura**  _aliases: anuradapura galenbindunuwewa anuradhapue_
+- **Aralagamwila**
+- **Aranayaka**
+- **Athkadura**  _aliases: ethkand etkand ethkadu athkadu_
+- **Attanagalla**  _aliases: athanaga_
+- **Attidiya**  _aliases: athidiya_
+- **Aturugiriya**  _aliases: athurugiriya ranala_
+- **Avissawella**  _aliases: awissawella Dehiovita dehiowita_
+- **Ayagama**
+
+_307 more match — refine `query` or raise `limit` to see them._

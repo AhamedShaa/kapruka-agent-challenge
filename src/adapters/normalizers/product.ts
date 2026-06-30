@@ -1,0 +1,135 @@
+import type { Product } from 'kapruka-mcp';
+import type { NormalizedProduct } from './types.js';
+
+interface FieldResult<T> {
+  value: T | null;
+}
+
+function present<T>(value: T): FieldResult<T> {
+  return { value };
+}
+
+const absent: FieldResult<never> = { value: null };
+
+/** "0 lbs" / "0 kg" etc. are a confirmed server-side stub (Decisions Log D/F) — null. A positive number + unit is preserved as-is. Unparseable → null. */
+function parseWeight(matched: string | null): string | null {
+  if (matched === null) return null;
+  const trimmed = matched.trim();
+  const m = trimmed.match(/^(\d+(?:\.\d+)?)\s*(.+)$/);
+  if (!m) return null;
+  const numeric = Number(m[1]);
+  if (!Number.isFinite(numeric) || numeric === 0) return null;
+  return trimmed;
+}
+
+function extractVendor(rawText: string): string | null {
+  const m = rawText.match(/\*\*Vendor\*\*:\s*(.+)/);
+  return m ? m[1].trim() : null;
+}
+
+function extractWeight(rawText: string): string | null {
+  const m = rawText.match(/\*\*Weight\*\*:\s*(.+)/);
+  return parseWeight(m ? m[1] : null);
+}
+
+/** Single-product get_product responses have exactly one `[View on Kapruka]` link. */
+function extractProductUrlSingle(rawText: string): string | null {
+  const m = rawText.match(/\[View on Kapruka\]\((https?:\/\/[^)]+)\)/);
+  return m ? m[1] : null;
+}
+
+/** Search responses contain many product blocks — find the one matching this product's id, then read its `[View product]` link. */
+function extractProductUrlForId(rawText: string, productId: string): string | null {
+  const blocks = rawText.split(/\*\*\d+\.\s/).slice(1);
+  for (const block of blocks) {
+    const idMatch = block.match(/`([^`]+)`/);
+    if (idMatch && idMatch[1].toLowerCase() === productId.toLowerCase()) {
+      const linkMatch = block.match(/\[View product\]\((https?:\/\/[^)]+)\)/);
+      return linkMatch ? linkMatch[1] : null;
+    }
+  }
+  return null;
+}
+
+function buildProduct(
+  raw: Product,
+  fields: Record<string, FieldResult<unknown>>,
+  base: { id: string; in_stock: boolean; currency: string },
+): NormalizedProduct {
+  return {
+    id: base.id,
+    name: fields.name.value as string | null,
+    price: fields.price.value as number | null,
+    currency: base.currency,
+    image_url: fields.image_url.value as string | null,
+    product_url: fields.product_url.value as string | null,
+    category: fields.category.value as string | null,
+    description: fields.description.value as string | null,
+    visual_description: fields.visual_description.value as string | null,
+    vendor: fields.vendor.value as string | null,
+    weight: fields.weight.value as string | null,
+    in_stock: base.in_stock,
+  };
+}
+
+/**
+ * Normalizes a product as returned by search_products. `rawText` (the full
+ * search-response markdown) is optional — without it, vendor/weight/
+ * product_url stay null, since search results never carry vendor/weight
+ * labels, and product_url has no home on the parsed SearchResult/Product
+ * type at all (Section 3, search table).
+ */
+export function normalizeSearchProduct(raw: Product, rawText?: string): NormalizedProduct {
+  const productUrl = rawText ? extractProductUrlForId(rawText, raw.id) : null;
+
+  return buildProduct(
+    raw,
+    {
+      name: raw.name ? present(raw.name) : absent,
+      // Decision #1 (LOCKED): a parsed 0 is indistinguishable from a real free item — always null.
+      price: raw.price !== 0 ? present(raw.price) : absent,
+      // Decision C: search results never carry a real image — hard rule, no heuristic.
+      image_url: absent,
+      product_url: productUrl !== null ? present(productUrl) : absent,
+      category: raw.category ? present(raw.category) : absent,
+      // Decision A/B context: search responses hardcode description to "" — always null.
+      description: absent,
+      // Decision A (LOCKED): always null.
+      visual_description: absent,
+      // Search blocks never carry a Vendor label.
+      vendor: absent,
+      // Search blocks never carry a Weight label.
+      weight: absent,
+    },
+    { id: raw.id, in_stock: raw.in_stock, currency: 'LKR' },
+  );
+}
+
+/**
+ * Normalizes a product as returned by get_product. `rawText` (the full
+ * get_product-response markdown) is optional — without it, vendor/weight/
+ * product_url stay null (same reasoning as normalizeSearchProduct).
+ */
+export function normalizeGetProductResult(raw: Product, rawText?: string): NormalizedProduct {
+  const vendor = rawText ? extractVendor(rawText) : null;
+  const weight = rawText ? extractWeight(rawText) : null;
+  const productUrl = rawText ? extractProductUrlSingle(rawText) : null;
+
+  return buildProduct(
+    raw,
+    {
+      name: raw.name ? present(raw.name) : absent,
+      price: raw.price !== 0 ? present(raw.price) : absent,
+      image_url: raw.image_url ? present(raw.image_url) : absent,
+      product_url: productUrl !== null ? present(productUrl) : absent,
+      category: raw.category ? present(raw.category) : absent,
+      // Decision B (LOCKED): preserve description exactly as the SDK parser returns it, truncation included.
+      description: raw.description ? present(raw.description) : absent,
+      // Decision A (LOCKED): always null, regardless of what the SDK synthesized into visual_description.
+      visual_description: absent,
+      vendor: vendor !== null ? present(vendor) : absent,
+      weight: weight !== null ? present(weight) : absent,
+    },
+    { id: raw.id, in_stock: raw.in_stock, currency: 'LKR' },
+  );
+}

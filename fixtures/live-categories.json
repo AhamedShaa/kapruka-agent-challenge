@@ -1,0 +1,327 @@
+[
+  {
+    "id": "automobile",
+    "name": "Automobile",
+    "description": "https://www.kapruka.com/online/automobile"
+  },
+  {
+    "id": "ayurvedic",
+    "name": "Ayurvedic",
+    "description": "https://www.kapruka.com/online/ayurvedic"
+  },
+  {
+    "id": "bicycles",
+    "name": "Bicycle",
+    "description": "https://www.kapruka.com/online/bicycles"
+  },
+  {
+    "id": "books",
+    "name": "Books",
+    "description": "https://www.kapruka.com/online/books"
+  },
+  {
+    "id": "chocolates",
+    "name": "Chocolates",
+    "description": "https://www.kapruka.com/online/chocolates"
+  },
+  {
+    "id": "clothing",
+    "name": "Clothing",
+    "description": "https://www.kapruka.com/online/clothing"
+  },
+  {
+    "id": "combogifts",
+    "name": "combopack",
+    "description": "https://www.kapruka.com/online/combogifts"
+  },
+  {
+    "id": "cosmetics",
+    "name": "Cosmetics",
+    "description": "https://www.kapruka.com/online/cosmetics"
+  },
+  {
+    "id": "curd",
+    "name": "Curd",
+    "description": "https://www.kapruka.com/online/curd"
+  },
+  {
+    "id": "electronics",
+    "name": "Electronic",
+    "description": "https://www.kapruka.com/online/electronics"
+  },
+  {
+    "id": "fashion",
+    "name": "Fashion",
+    "description": "https://www.kapruka.com/online/fashion"
+  },
+  {
+    "id": "fruitbaskets",
+    "name": "Fruits",
+    "description": "https://www.kapruka.com/online/fruitbaskets"
+  },
+  {
+    "id": "giftvouchers",
+    "name": "Giftcert",
+    "description": "https://www.kapruka.com/online/giftvouchers"
+  },
+  {
+    "id": "giftset",
+    "name": "Giftset",
+    "description": "https://www.kapruka.com/online/giftset"
+  },
+  {
+    "id": "greetingcards",
+    "name": "GreetingCards",
+    "description": "https://www.kapruka.com/online/greetingcards"
+  },
+  {
+    "id": "grocery",
+    "name": "Grocery",
+    "description": "https://www.kapruka.com/online/grocery"
+  },
+  {
+    "id": "home_lifestyle",
+    "name": "Household",
+    "description": "https://www.kapruka.com/online/home_lifestyle"
+  },
+  {
+    "id": "jewellery",
+    "name": "Jewellery",
+    "description": "https://www.kapruka.com/online/jewellery"
+  },
+  {
+    "id": "toys",
+    "name": "KidsToys",
+    "description": "https://www.kapruka.com/online/toys"
+  },
+  {
+    "id": "liquor",
+    "name": "Liquor",
+    "description": "https://www.kapruka.com/online/liquor"
+  },
+  {
+    "id": "baby",
+    "name": "BabyItems",
+    "description": "https://www.kapruka.com/online/baby"
+  },
+  {
+    "id": "party",
+    "name": "party",
+    "description": "https://www.kapruka.com/online/party"
+  },
+  {
+    "id": "perfumes",
+    "name": "Perfumes",
+    "description": "https://www.kapruka.com/online/perfumes"
+  },
+  {
+    "id": "pet",
+    "name": "Pet",
+    "description": "https://www.kapruka.com/online/pet"
+  },
+  {
+    "id": "pharmacy",
+    "name": "Pharmacy",
+    "description": "https://www.kapruka.com/online/pharmacy"
+  },
+  {
+    "id": "pirikara",
+    "name": "pirikara",
+    "description": "https://www.kapruka.com/online/pirikara"
+  },
+  {
+    "id": "childrens",
+    "name": "Childrens",
+    "description": "https://www.kapruka.com/online/childrens"
+  },
+  {
+    "id": "schoolpride",
+    "name": "Schoolpride",
+    "description": "https://www.kapruka.com/online/schoolpride"
+  },
+  {
+    "id": "softtoy",
+    "name": "Softtoy",
+    "description": "https://www.kapruka.com/online/softtoy"
+  },
+  {
+    "id": "sports",
+    "name": "Sports",
+    "description": "https://www.kapruka.com/online/sports"
+  },
+  {
+    "id": "vegetables",
+    "name": "Vegetables",
+    "description": "https://www.kapruka.com/online/vegetables"
+  },
+  {
+    "id": "intimate_essentials",
+    "name": "Adult Products",
+    "description": "https://www.kapruka.com/online/intimate_essentials"
+  },
+  {
+    "id": "thaipongle",
+    "name": "thaipongle",
+    "description": "https://www.kapruka.com/online/thaipongle"
+  },
+  {
+    "id": "teachersday",
+    "name": "teachersday",
+    "description": "https://www.kapruka.com/online/teachersday"
+  },
+  {
+    "id": "samedaydelivery",
+    "name": "samedaydelivery",
+    "description": "https://www.kapruka.com/online/samedaydelivery"
+  },
+  {
+    "id": "bestsellers",
+    "name": "bestsellers",
+    "description": "https://www.kapruka.com/online/bestsellers"
+  },
+  {
+    "id": "diwali",
+    "name": "diwali",
+    "description": "https://www.kapruka.com/online/diwali"
+  },
+  {
+    "id": "newadditions",
+    "name": "newadditions",
+    "description": "https://www.kapruka.com/online/newadditions"
+  },
+  {
+    "id": "graduation",
+    "name": "graduation",
+    "description": "https://www.kapruka.com/online/graduation"
+  },
+  {
+    "id": "valentine",
+    "name": "valentine",
+    "description": "https://www.kapruka.com/online/valentine"
+  },
+  {
+    "id": "newyear_january",
+    "name": "newyear_january",
+    "description": "https://www.kapruka.com/online/newyear_january"
+  },
+  {
+    "id": "fathersday",
+    "name": "fathersday",
+    "description": "https://www.kapruka.com/online/fathersday"
+  },
+  {
+    "id": "childrensday",
+    "name": "childrensday",
+    "description": "https://www.kapruka.com/online/childrensday"
+  },
+  {
+    "id": "christmas",
+    "name": "christmas",
+    "description": "https://www.kapruka.com/online/christmas"
+  },
+  {
+    "id": "anniversary",
+    "name": "anniversary",
+    "description": "https://www.kapruka.com/online/anniversary"
+  },
+  {
+    "id": "birthday",
+    "name": "birthday",
+    "description": "https://www.kapruka.com/online/birthday"
+  },
+  {
+    "id": "bridetobe",
+    "name": "bridetobe",
+    "description": "https://www.kapruka.com/online/bridetobe"
+  },
+  {
+    "id": "corporate",
+    "name": "corporate",
+    "description": "https://www.kapruka.com/online/corporate"
+  },
+  {
+    "id": "lover",
+    "name": "lover",
+    "description": "https://www.kapruka.com/online/lover"
+  },
+  {
+    "id": "momtobe",
+    "name": "momtobe",
+    "description": "https://www.kapruka.com/online/momtobe"
+  },
+  {
+    "id": "mother",
+    "name": "mother",
+    "description": "https://www.kapruka.com/online/mother"
+  },
+  {
+    "id": "sympathies",
+    "name": "sympathies",
+    "description": "https://www.kapruka.com/online/sympathies"
+  },
+  {
+    "id": "uniquegifts",
+    "name": "uniquegifts",
+    "description": "https://www.kapruka.com/online/uniquegifts"
+  },
+  {
+    "id": "wedding",
+    "name": "wedding",
+    "description": "https://www.kapruka.com/online/wedding"
+  },
+  {
+    "id": "womenday",
+    "name": "womenday",
+    "description": "https://www.kapruka.com/online/womenday"
+  },
+  {
+    "id": "youandme",
+    "name": "youandme",
+    "description": "https://www.kapruka.com/online/youandme"
+  },
+  {
+    "id": "household",
+    "name": "household",
+    "description": "https://www.kapruka.com/online/household"
+  },
+  {
+    "id": "ornaments",
+    "name": "ornaments",
+    "description": "https://www.kapruka.com/online/ornaments"
+  },
+  {
+    "id": "promotions",
+    "name": "promotions",
+    "description": "https://www.kapruka.com/online/promotions"
+  },
+  {
+    "id": "cakes",
+    "name": "cakes",
+    "description": "https://www.kapruka.com/online/cakes"
+  },
+  {
+    "id": "flowers",
+    "name": "flowers",
+    "description": "https://www.kapruka.com/online/flowers"
+  },
+  {
+    "id": "personalized_gifts",
+    "name": "Personalized Gifts",
+    "description": "https://www.kapruka.com/online/personalized_gifts"
+  },
+  {
+    "id": "halloween",
+    "name": "halloween",
+    "description": "https://www.kapruka.com/online/halloween"
+  },
+  {
+    "id": "services",
+    "name": "Services",
+    "description": "https://www.kapruka.com/online/services"
+  },
+  {
+    "id": "food",
+    "name": "Food",
+    "description": "https://www.kapruka.com/online/food"
+  }
+]

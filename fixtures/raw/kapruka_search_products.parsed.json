@@ -1,0 +1,106 @@
+{
+  "products": [
+    {
+      "id": "FLOWERS00T1875",
+      "name": "Rose Elegance Display Vase With 30 Red Roses",
+      "price": 18000,
+      "currency": "LKR",
+      "image_url": "https://www.kapruka.com/buyonline/rose-elegance-display-vase-wit/kid/flowers00t1875",
+      "category": "flowers",
+      "description": "",
+      "visual_description": "",
+      "in_stock": true
+    },
+    {
+      "id": "FLOWERS00T2010",
+      "name": "Elegant 30 Red Roses Premium Bouquet",
+      "price": 12800,
+      "currency": "LKR",
+      "image_url": "https://www.kapruka.com/buyonline/elegant-30-red-roses-premium-b/kid/flowers00t2010",
+      "category": "flowers",
+      "description": "",
+      "visual_description": "",
+      "in_stock": true
+    },
+    {
+      "id": "FLOWERS00T2032",
+      "name": "50 Red Roses Heart-shaped Bouquet - Romantic Luxury Flower Bouqu",
+      "price": 21120,
+      "currency": "LKR",
+      "image_url": "https://www.kapruka.com/buyonline/50-red-roses-heart-shaped-bouq/kid/flowers00t2032",
+      "category": "flowers",
+      "description": "",
+      "visual_description": "",
+      "in_stock": true
+    },
+    {
+      "id": "FLOWERS00T1995",
+      "name": "Tuxedo Roses Bouquet With 25 Red Roses And 10 White Roses",
+      "price": 14720,
+      "currency": "LKR",
+      "image_url": "https://www.kapruka.com/buyonline/tuxedo-roses-bouquet-with-25-r/kid/flowers00t1995",
+      "category": "flowers",
+      "description": "",
+      "visual_description": "",
+      "in_stock": true
+    },
+    {
+      "id": "FLOWERS00T1754",
+      "name": "A Love So Beautiful Flower Arrangement With 16 Red Roses",
+      "price": 15480,
+      "currency": "LKR",
+      "image_url": "https://www.kapruka.com/buyonline/a-love-so-beautiful-flower-arr/kid/flowers00t1754",
+      "category": "flowers",
+      "description": "",
+      "visual_description": "",
+      "in_stock": true
+    },
+    {
+      "id": "FLOWERS00T2075",
+      "name": "6 Red Rose Bouquet With Elegant Wrapping",
+      "price": 5210,
+      "currency": "LKR",
+      "image_url": "https://www.kapruka.com/buyonline/6-red-rose-bouquet-with-elegan/kid/flowers00t2075",
+      "category": "flowers",
+      "description": "",
+      "visual_description": "",
+      "in_stock": true
+    },
+    {
+      "id": "FLOWERS00T2078",
+      "name": "``to My Golden Queen`` Rose Bouquet With 11 Red Roses",
+      "price": 8690,
+      "currency": "LKR",
+      "image_url": "https://www.kapruka.com/buyonline/to-my-golden-queen-rose-bouque/kid/flowers00t2078",
+      "category": "flowers",
+      "description": "",
+      "visual_description": "",
+      "in_stock": true
+    },
+    {
+      "id": "FLOWERS00T2000",
+      "name": "Love And Mischief Bouquet With 7 Red Roses And 4 White Roses",
+      "price": 8460,
+      "currency": "LKR",
+      "image_url": "https://www.kapruka.com/buyonline/love-and-mischief-bouquet-with/kid/flowers00t2000",
+      "category": "flowers",
+      "description": "",
+      "visual_description": "",
+      "in_stock": true
+    },
+    {
+      "id": "FLOWERS00T1567",
+      "name": "Love`s Twin Rose Arrangement With 30 Red Roses And 20 White Roses",
+      "price": 25980,
+      "currency": "LKR",
+      "image_url": "https://www.kapruka.com/buyonline/love-s-twin-rose-arrangement-w/kid/flowers00t1567",
+      "category": "flowers",
+      "description": "",
+      "visual_description": "",
+      "in_stock": true
+    }
+  ],
+  "total": 9,
+  "query": "roses",
+  "nextCursor": "eyJ1IjoiTVRBPSIsInAiOjJ9"
+}
