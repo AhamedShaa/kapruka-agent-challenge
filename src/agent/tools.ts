@@ -6,6 +6,7 @@ import {
   type CommercePort,
   type CreateOrderRequest,
   type NormalizedProduct,
+  type DeliveryResolutionContext,
 } from '@/core/ports/commerce.port.js';
 import {
   normalizedToUIProduct,
@@ -57,6 +58,36 @@ async function runTool(
     logger.error({ tool: toolName, err: message }, 'agent tool failed');
     emitter.emitRender({ type: 'ERROR', message, tool: toolName });
     return `Couldn't complete that just now — ${message}. Let's try again in a moment.`;
+  }
+}
+
+/**
+ * Sibling of runTool, for tools using responseFormat: 'content_and_artifact'.
+ * Returns [content, artifact] tuple on both success and error paths so
+ * StructuredTool.call()'s tuple check never throws.
+ *
+ * TODO(post-submission): Merge with runTool by genericizing runTool to
+ * take an explicit errorValue parameter, then updating all 13 string-only
+ * call sites to pass their error strings explicitly. Deferred for now to
+ * avoid touching the 13 other tools under deadline pressure.
+ * See conversation history for the Option A vs B decision rationale.
+ */
+async function runToolWithArtifact<A>(
+  toolName: string,
+  emitter: RenderEventEmitter,
+  fn: () => Promise<[string, A]>,
+  errorArtifact: A,
+): Promise<[string, A]> {
+  try {
+    return await fn();
+  } catch (err) {
+    const message = err instanceof KaprukaError ? err.message : toMessage(err);
+    logger.error({ tool: toolName, err: message }, 'agent tool failed');
+    emitter.emitRender({ type: 'ERROR', message, tool: toolName });
+    return [
+      `Couldn't complete that just now — ${message}. Let's try again in a moment.`,
+      errorArtifact,
+    ];
   }
 }
 
@@ -180,17 +211,24 @@ export function createTools(
       productId: z.string().describe('A product ID from a prior searchProducts or getProduct result.'),
       date: z.string().optional().describe('When delivery should happen, in any reasonable format. If omitted, defaults to tomorrow.'),
     }),
+    responseFormat: 'content_and_artifact',
     func: async ({ city, productId, date }) =>
-      runTool('checkDelivery', emitter, async () => {
-        const quote = await adapter.checkDelivery(city, productId, date);
-        const uiQuote = normalizedToUIDeliveryQuote(quote);
-        emitter.emitRender({ type: 'DELIVERY_QUOTE', ...uiQuote });
+      runToolWithArtifact<{ resolutionContext: DeliveryResolutionContext | null }>(
+        'checkDelivery',
+        emitter,
+        async () => {
+          const quote = await adapter.checkDelivery(city, productId, date);
+          const uiQuote = normalizedToUIDeliveryQuote(quote);
+          emitter.emitRender({ type: 'DELIVERY_QUOTE', ...uiQuote });
 
-        if (uiQuote.available) {
-          return `Delivery to ${uiQuote.city}: ${uiQuote.fee === 0 ? 'FREE' : `LKR ${uiQuote.fee}`}.`;
-        }
-        return `Cannot deliver to ${uiQuote.city}. ${uiQuote.note}. Suggest an alternative city.`;
-      }),
+          const narration = uiQuote.available
+            ? `Delivery to ${uiQuote.city}: ${uiQuote.fee === 0 ? 'FREE' : `LKR ${uiQuote.fee}`}.`
+            : `Cannot deliver to ${uiQuote.city}. ${uiQuote.note}. Suggest an alternative city.`;
+
+          return [narration, { resolutionContext: quote.resolutionContext ?? null }];
+        },
+        { resolutionContext: null },
+      ),
   });
 
   const validateShipping = new DynamicStructuredTool({

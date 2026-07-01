@@ -2,6 +2,7 @@ import type {
   NormalizedProduct,
   NormalizedCartItem,
   NormalizedDeliveryCheck,
+  NormalizedDeliveryCheckWithContext,
 } from '@/adapters/normalizers/types.js';
 import type { UIProduct, UICartItem, UIDeliveryQuote } from '@/agent/state.js';
 
@@ -36,10 +37,12 @@ export function normalizedToUICartItem(item: NormalizedCartItem): UICartItem {
 /**
  * Flattens NormalizedDeliveryCheck's tri-state `availability` into a primary
  * boolean for the UI, with `etaLabel` carrying the nuance as display text.
- * In practice `availability` only ever resolves to 'available' or 'unknown'
- * here (rawText, which 'available_later'/'unavailable' depend on, is never
- * available to the adapter — see normalizer-design notes) — etaLabel still
- * covers all four states defensively.
+ * All four availability states are reachable now that _rawMarkdown is
+ * threaded through from the live API via the kapruka-mcp patch.
+ *
+ * City display falls back to resolutionContext.resolvedAs when quote.city
+ * is null — this happens when the rich text extraction path ran but the
+ * "Delivery to X on DATE" header regex didn't match (e.g. degraded branch).
  */
 export function normalizedToUIDeliveryQuote(
   d: NormalizedDeliveryCheck & { note: string },
@@ -60,8 +63,13 @@ export function normalizedToUIDeliveryQuote(
     }
   })();
 
+  const cityForDisplay =
+    d.city
+    ?? (d as NormalizedDeliveryCheckWithContext).resolutionContext?.resolvedAs
+    ?? 'your area';
+
   return {
-    city: d.city ?? 'your area',
+    city: cityForDisplay,
     available,
     fee: d.fee ?? 0,
     etaLabel,

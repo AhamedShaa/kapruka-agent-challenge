@@ -1,5 +1,5 @@
-import type { BaseMessage } from '@langchain/core/messages';
-import type { CommercePort } from '@/core/ports/commerce.port.js';
+import type { BaseMessage, ToolMessage } from '@langchain/core/messages';
+import type { CommercePort, DeliveryResolutionContext } from '@/core/ports/commerce.port.js';
 import { normalizedToUICartItem } from '@/adapters/ui-mappers.js';
 import { logger } from '@/lib/logger.js';
 import type { StateType } from './state.js';
@@ -69,17 +69,66 @@ export async function stateUpdaterNode(
     // mid-conversation ("actually send to Kandy").
     const strongCity = (listCall?.args as { query?: unknown })?.query;
     if (typeof strongCity === 'string' && strongCity.length > 0) {
-      updates.deliveryContext = { city: strongCity, date: state.deliveryContext.date };
+      updates.deliveryContext = {
+        city: strongCity,
+        date: state.deliveryContext.date,
+        resolvedCity: state.deliveryContext.resolvedCity,
+        ambiguous: state.deliveryContext.ambiguous,
+        alternateZones: state.deliveryContext.alternateZones,
+        lastResolutionReason: state.deliveryContext.lastResolutionReason,
+      };
     } else if (checkCall && !state.deliveryContext.city) {
       // Weak signal: checkDelivery.city is the resolved id-form. Only write
       // if no city is set yet — preserves the human form set in an earlier round.
       const weakCity = (checkCall.args as { city?: unknown }).city;
       if (typeof weakCity === 'string' && weakCity.length > 0) {
-        updates.deliveryContext = { city: weakCity, date: state.deliveryContext.date };
+        updates.deliveryContext = {
+          city: weakCity,
+          date: state.deliveryContext.date,
+          resolvedCity: state.deliveryContext.resolvedCity,
+          ambiguous: state.deliveryContext.ambiguous,
+          alternateZones: state.deliveryContext.alternateZones,
+          lastResolutionReason: state.deliveryContext.lastResolutionReason,
+        };
       }
     }
   } catch (err) {
     logger.error({ err: toMessage(err) }, 'stateUpdaterNode: deliveryContext extraction failed');
+  }
+
+  // deliveryContext resolution metadata — read from the most recent
+  // checkDelivery ToolMessage's artifact (responseFormat: 'content_and_artifact'
+  // on the checkDelivery tool). This is the actual resolved value the adapter
+  // computed, distinct from the strong/weak signal above (which only reflects
+  // what the LLM passed as args). Additive: only overwrites the resolution
+  // fields, preserving whatever city/date the block above already set.
+  try {
+    for (let i = state.messages.length - 1; i >= 0; i--) {
+      const m = state.messages[i];
+      if (m._getType() !== 'tool') continue;
+      const tm = m as ToolMessage;
+      if (tm.name !== 'checkDelivery') continue;
+
+      const artifact = tm.artifact as { resolutionContext?: DeliveryResolutionContext | null } | undefined;
+
+      if (artifact?.resolutionContext) {
+        const ctx = artifact.resolutionContext;
+        const existingCity = updates.deliveryContext?.city ?? state.deliveryContext.city;
+        const existingDate = updates.deliveryContext?.date ?? state.deliveryContext.date;
+
+        updates.deliveryContext = {
+          city: existingCity ?? ctx.requestedCity,
+          date: existingDate ?? ctx.resolvedDate,
+          resolvedCity: ctx.resolvedAs,
+          ambiguous: ctx.ambiguous,
+          alternateZones: ctx.alternateNames,
+          lastResolutionReason: ctx.reason,
+        };
+      }
+      break; // only the most recent checkDelivery matters
+    }
+  } catch (err) {
+    logger.error({ err: toMessage(err) }, 'stateUpdaterNode: artifact extraction failed');
   }
 
   // customerName — rememberCustomerFact is designed to never throw into the

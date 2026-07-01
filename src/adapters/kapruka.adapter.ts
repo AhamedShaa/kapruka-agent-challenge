@@ -364,6 +364,8 @@ export class KaprukaAdapter implements CommercePort {
     return normalizeDeliveryCityList(raw);
   }
 
+
+
   async checkDelivery(
     city: string,
     productId: string,
@@ -390,28 +392,42 @@ export class KaprukaAdapter implements CommercePort {
 
     // Call the SDK with values we know are valid; capture raw text
     // so the normalizer can do tri-state availability extraction.
-    const { parsed: raw, rawText } = await this.callToolWithRaw<{
+    const { parsed: raw } = await this.callToolWithRaw<{
       available: boolean;
       city: string;
       deliveryFee: string;
       estimatedDays: number;
       note: string;
+      _rawMarkdown?: string;
     }>(TOOL_NAMES.check_delivery, {
       city: resolution.resolvedName,
       product_id: productId,
       delivery_date: isoDate,
     });
 
+
+    // _rawMarkdown carries the original API markdown. Local server
+    // patched to propagate it — see patches/. Falls back to undefined
+    // in mock mode or if patching didn't reach a call, where the
+    // normalizer's degraded branch handles it correctly.
     const normalized = normalizeDeliveryCheck({
       available: raw.available,
       city: raw.city,
       fee: parseLkr(raw.deliveryFee),
       estimated_days: raw.estimatedDays,
-    }, rawText);
+    }, raw._rawMarkdown);
+
+
+    let noteForResponse = raw.note;
+    if (normalized.availability === 'available_later' && normalized.nextAvailableDate) {
+      noteForResponse = `Not available on the requested date. Next available: ${normalized.nextAvailableDate}. Fee when available: LKR ${normalized.fee ?? 'TBD'}.`;
+    } else if (normalized.availability === 'unavailable') {
+      noteForResponse = raw.note || 'Delivery not available to this city.';
+    }
 
     return {
       ...normalized,
-      note: raw.note,
+      note: noteForResponse,
       resolutionContext: {
         requestedCity: city,
         resolvedAs: resolution.resolvedName,
