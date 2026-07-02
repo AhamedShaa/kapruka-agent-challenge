@@ -110,10 +110,13 @@ interface CurrentConversationState {
   cartSnapshot: UICartItem[] | null;
   deliveryContext: { city: string | null; date: string | null };
   customerName: string | null;
+  currentDate: string;
 }
 
 function buildCurrentStateSection(currentState: CurrentConversationState): string {
   const lines: string[] = [];
+
+  lines.push(`Today's date: ${currentState.currentDate} (Asia/Colombo).`);
 
   if (currentState.cartSnapshot && currentState.cartSnapshot.length > 0) {
     const total = currentState.cartSnapshot.reduce((sum, i) => sum + i.price * i.quantity, 0);

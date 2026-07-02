@@ -231,31 +231,6 @@ export function createTools(
       ),
   });
 
-  const validateShipping = new DynamicStructuredTool({
-    name: 'validateShipping',
-    description:
-      'Call this before every createOrder to validate the recipient\'s name, phone number, ' +
-      'and city. If validation fails, tell the user exactly what to fix. Never call createOrder ' +
-      'if this returns errors.',
-    schema: z.object({ name: z.string(), phone: z.string(), address: z.string(), city: z.string() }),
-    func: async ({ name, phone, address, city }) =>
-      runTool('validateShipping', emitter, async () => {
-        const result = await adapter.validateShipping({
-          name,
-          phone,
-          address_line1: address,
-          city,
-        });
-
-        if (result.valid) {
-          return 'Shipping validated. Ready to create order.';
-        }
-
-        const warnings = result.warnings.length > 0 ? ` Warnings: ${result.warnings.join(', ')}` : '';
-        return `Shipping issues: ${result.errors.join(', ')}.${warnings}`;
-      }),
-  });
-
   const addToCart = new DynamicStructuredTool({
     name: 'addToCart',
     description:
@@ -331,13 +306,19 @@ export function createTools(
     description:
       'Call this ONLY when the user explicitly confirms they want to place the order — ' +
       'phrases like "yes go ahead", "place it", "confirm", "order now". Never call this ' +
-      'speculatively. Always call validateShipping first.',
+      'speculatively. Collect recipient name, phone (Sri Lankan mobile), address, city, ' +
+      'and delivery date before calling.',
     schema: z.object({
       recipientName: z.string(),
       recipientPhone: z.string(),
       deliveryAddress: z.string(),
       deliveryCity: z.string(),
-      deliveryDate: z.string(),
+      deliveryDate: z.string().describe(
+        'Delivery date as the user said it (e.g. "tomorrow", "next ' +
+        'Monday", "2026-07-15") — do NOT compute or guess a calendar ' +
+        'date yourself. Pass the user\'s words as-is; the system ' +
+        'converts it using the real current date shown in your context.'
+      ),
       senderName: z.string(),
       giftMessage: z.string().optional(),
     }),
@@ -478,7 +459,6 @@ export function createTools(
     getProduct,
     getAlternatives,
     checkDelivery,
-    validateShipping,
     addToCart,
     getCart,
     getRecommendations,

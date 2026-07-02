@@ -62,4 +62,22 @@ describe('normalizeDateToISO', () => {
   it('throws InvalidDateError for an invalid day/month', () => {
     expect(() => normalizeDateToISO('32/13/2026')).toThrow(InvalidDateError);
   });
+
+  it('throws InvalidDateError for a past ISO date (2023-10-06)', () => {
+    expect(() => normalizeDateToISO('2023-10-06')).toThrow(InvalidDateError);
+  });
+
+  it('throws InvalidDateError for a far-past ISO date (2020-01-01)', () => {
+    expect(() => normalizeDateToISO('2020-01-01')).toThrow(InvalidDateError);
+  });
+
+  it('does NOT throw for today (today is valid, not past)', () => {
+    expect(() => normalizeDateToISO(todayISO())).not.toThrow();
+    expect(normalizeDateToISO(todayISO())).toBe(todayISO());
+  });
+
+  it('does NOT throw for tomorrow', () => {
+    expect(() => normalizeDateToISO(tomorrowISO())).not.toThrow();
+    expect(normalizeDateToISO(tomorrowISO())).toBe(tomorrowISO());
+  });
 });

@@ -101,10 +101,12 @@ async function runReactiveTurn(sessionId: string, productId: string, description
   const syntheticTool = new ToolMessage({ content: description, tool_call_id: callId });
 
   const memoriesSection = memoryStore.formatForPrompt(checkpoint.browserId);
+  const currentDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
   const sysPrompt = getSystemPrompt(checkpoint.locale, memoriesSection, {
     cartSnapshot: freshItems,
     deliveryContext: checkpoint.deliveryContext,
     customerName: checkpoint.customerName,
+    currentDate,
   });
 
   const controller = getReactiveStreamController(sessionId);

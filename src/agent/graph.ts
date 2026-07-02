@@ -30,10 +30,12 @@ export function createGraph(
 
   async function agentNode(state: StateType): Promise<Partial<StateType>> {
     const memoriesSection = memoryStore.formatForPrompt(state.browserId);
+    const currentDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
     const sysPrompt = getSystemPrompt(state.locale, memoriesSection, {
       cartSnapshot: state.cartSnapshot,
       deliveryContext: state.deliveryContext,
       customerName: state.customerName,
+      currentDate,
     });
 
     const response = await modelWithTools.invoke([new SystemMessage(sysPrompt), ...state.messages]);

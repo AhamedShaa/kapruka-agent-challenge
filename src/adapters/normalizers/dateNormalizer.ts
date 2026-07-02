@@ -21,7 +21,8 @@ function isValidCalendarDate(year: number, month: number, day: number): boolean 
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 }
 
-export function normalizeDateToISO(input: string | undefined | null): string {
+/** Internal helper: parse to ISO without the past-date check. */
+function parseToISO(input: string | undefined | null): string {
   if (input === undefined || input === null || input.trim() === '') {
     return dateOffsetISO(1);
   }
@@ -64,4 +65,18 @@ export function normalizeDateToISO(input: string | undefined | null): string {
   }
 
   throw new InvalidDateError(input);
+}
+
+export function normalizeDateToISO(input: string | undefined | null): string {
+  const result = parseToISO(input);
+
+  // YYYY-MM-DD strings are lexicographically sortable — string comparison is safe here.
+  const todayISO = dateOffsetISO(0);
+  if (result < todayISO) {
+    throw new InvalidDateError(
+      input ?? '(no input — defaulted, but somehow still in the past)',
+    );
+  }
+
+  return result;
 }
