@@ -44,7 +44,7 @@ export default function ProductDetailDrawer({
             </div>
 
             <div className="flex-1 overflow-y-auto p-4">
-              {imgError ? (
+              {!product.image_url || imgError ? (
                 <div className="w-full h-56 bg-gray-100 rounded-xl flex items-center justify-center">
                   <Package className="w-12 h-12 text-gray-300" />
                 </div>
