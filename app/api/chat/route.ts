@@ -9,6 +9,7 @@ import { createGraph } from '@/agent/graph.js';
 import { getCheckpointer } from '@/agent/checkpointer.js';
 import { RenderEventEmitter } from '@/agent/events.js';
 import { sseFrame, toMessage, extractDelta } from '@/agent/sse.js';
+import type { LastSearchContext, StateType } from '@/agent/state.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -38,8 +39,17 @@ export async function POST(request: Request): Promise<Response> {
   const adapter = await getAdapter();
   const memoryStore = await getMemoryStore();
   const emitter = new RenderEventEmitter();
-  const tools = createTools(adapter, emitter, memoryStore, browserId);
   const checkpointer = getCheckpointer();
+
+  // showMoreResults needs last turn's search context before the graph runs —
+  // tools are built once per request, ahead of the checkpointer restoring
+  // state inside graph.streamEvents() (same reasoning as reactiveTurn.ts's
+  // readCheckpointedValues).
+  const priorTuple = await checkpointer.getTuple({ configurable: { thread_id: sessionId } });
+  const lastSearchContext =
+    (priorTuple?.checkpoint.channel_values as Partial<StateType> | undefined)?.lastSearchContext ?? null;
+
+  const tools = createTools(adapter, emitter, memoryStore, browserId, lastSearchContext as LastSearchContext | null);
   const graph = createGraph(tools, memoryStore, checkpointer, adapter);
 
   const stream = new ReadableStream<Uint8Array>({

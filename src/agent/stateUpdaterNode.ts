@@ -2,7 +2,7 @@ import type { BaseMessage, ToolMessage } from '@langchain/core/messages';
 import type { CommercePort, DeliveryResolutionContext } from '@/core/ports/commerce.port.js';
 import { normalizedToUICartItem } from '@/adapters/ui-mappers.js';
 import { logger } from '@/lib/logger.js';
-import type { StateType } from './state.js';
+import type { LastSearchContext, StateType } from './state.js';
 
 interface ToolCallLike {
   id?: string;
@@ -150,6 +150,29 @@ export async function stateUpdaterNode(
     }
   } catch (err) {
     logger.error({ err: toMessage(err) }, 'stateUpdaterNode: customerName extraction failed');
+  }
+
+  // lastSearchContext — read from the most recent searchProducts/showMoreResults
+  // ToolMessage's artifact (both use responseFormat: 'content_and_artifact').
+  // A null artifact (error path, or "no prior search" for showMoreResults)
+  // must NOT clobber a previously valid context — e.g. a failed showMoreResults
+  // call after 3 successful pages shouldn't erase the ability to ask for page
+  // 4 again — so this only ever sets updates.lastSearchContext, never clears it.
+  try {
+    for (let i = state.messages.length - 1; i >= 0; i--) {
+      const m = state.messages[i];
+      if (m._getType() !== 'tool') continue;
+      const tm = m as ToolMessage;
+      if (tm.name !== 'searchProducts' && tm.name !== 'showMoreResults') continue;
+
+      const artifact = tm.artifact as LastSearchContext | null | undefined;
+      if (artifact) {
+        updates.lastSearchContext = artifact;
+      }
+      break; // only the most recent searchProducts/showMoreResults call matters
+    }
+  } catch (err) {
+    logger.error({ err: toMessage(err) }, 'stateUpdaterNode: lastSearchContext extraction failed');
   }
 
   return updates;

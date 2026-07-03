@@ -106,7 +106,21 @@ export interface SearchFilters {
   min_price?: number;
   max_price?: number;
   in_stock_only?: boolean;
-  sort?: 'price_asc' | 'price_desc' | 'name';
+  // Confirmed live via raw probe (scripts/probe-sort-values.ts) — 'name' was
+  // never a real accepted value; the server's own Pydantic error lists the
+  // true set: bestseller, newest, price_asc, price_desc, relevance.
+  sort?: 'bestseller' | 'newest' | 'price_asc' | 'price_desc' | 'relevance';
+}
+
+/**
+ * Distinguishes a genuine no-match from "matches exist, just not within your
+ * filters" — the search-hardening pass's zero-result relaxation ladder (see
+ * src/adapters/searchRelaxation.ts) is what actually computes this.
+ */
+export type MatchOutcome = 'ok' | 'no-match' | 'filtered-empty';
+
+export interface SearchOutcome extends NormalizedSearchResult {
+  matchOutcome: MatchOutcome;
 }
 
 /**
@@ -115,7 +129,7 @@ export interface SearchFilters {
  * from 'kapruka-mcp'.
  */
 export interface CommercePort {
-  search(q: string, category?: string, filters?: SearchFilters): Promise<NormalizedSearchResult>;
+  search(q: string, category?: string, filters?: SearchFilters, cursor?: string): Promise<SearchOutcome>;
   getProduct(productId: string): Promise<NormalizedProduct>;
   getAlternatives(query: string, maxPrice?: number): Promise<NormalizedSearchResult>;
   getRecommendations(category: string): Promise<NormalizedSearchResult>;

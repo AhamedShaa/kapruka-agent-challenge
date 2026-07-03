@@ -37,6 +37,23 @@ export interface UIDeliveryQuote {
 }
 
 /**
+ * Snapshot of the most recent searchProducts/showMoreResults call — lets
+ * showMoreResults re-issue the same search with the stored cursor rather than
+ * the LLM having to (mis)remember and retype the original query/filters.
+ * Confirmed live (scripts/probe-cursor-pagination.ts) that cursor pagination
+ * is real: distinct, non-overlapping pages, each carrying its own next cursor.
+ */
+export interface LastSearchContext {
+  q: string;
+  category?: string;
+  min_price?: number;
+  max_price?: number;
+  in_stock_only?: boolean;
+  sort?: 'bestseller' | 'newest' | 'price_asc' | 'price_desc' | 'relevance';
+  cursor: string | null;
+}
+
+/**
  * Agent state. RenderEvents are intentionally NOT stored here — they're
  * ephemeral, emitted per-request via RenderEventEmitter, and would otherwise
  * inflate the LangGraph checkpointer indefinitely.
@@ -88,6 +105,10 @@ export const AgentState = Annotation.Root({
     }),
   }),
   customerName: Annotation<string | null>({
+    reducer: (_current, update) => update,
+    default: () => null,
+  }),
+  lastSearchContext: Annotation<LastSearchContext | null>({
     reducer: (_current, update) => update,
     default: () => null,
   }),

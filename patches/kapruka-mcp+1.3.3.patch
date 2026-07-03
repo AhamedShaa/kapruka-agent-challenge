@@ -1,5 +1,5 @@
 diff --git a/node_modules/kapruka-mcp/dist/local/server.js b/node_modules/kapruka-mcp/dist/local/server.js
-index 0685160..3cbe980 100644
+index 0685160..c5f3ab1 100644
 --- a/node_modules/kapruka-mcp/dist/local/server.js
 +++ b/node_modules/kapruka-mcp/dist/local/server.js
 @@ -93,7 +93,7 @@ const CreateOrderSchema = {
@@ -11,24 +11,24 @@ index 0685160..3cbe980 100644
      }).describe('Sender details'),
      gift_message: z.string().optional().describe('Gift message to include with the order'),
      currency: z.string().optional().describe('Currency code (default: LKR)'),
-@@ -587,23 +587,23 @@ Returns a ranked list of products with ID, name, price (LKR), image URL, and sto
+@@ -587,28 +587,35 @@ Returns a ranked list of products with ID, name, price (LKR), image URL, and sto
  Tip: add a category filter for more relevant results.
  Examples: query="birthday cake", category="cakes"; query="red roses", category="flowers"`,
              inputSchema: SearchSchema,
 -        }, async ({ q, category }) => {
-+        }, async ({ q, category, min_price, max_price, in_stock_only, sort }) => {
++        }, async ({ q, category, min_price, max_price, in_stock_only, sort, cursor }) => {
              const rateLimitError = this.rateLimiter.check();
              if (rateLimitError)
                  return this.errorContent(TOOL_NAMES.search_products, rateLimitError);
 -            this.events.toolCall(TOOL_NAMES.search_products, { q, category });
 -            this.recordAction(TOOL_NAMES.search_products, { q, category });
-+            this.events.toolCall(TOOL_NAMES.search_products, { q, category, min_price, max_price, in_stock_only, sort });
-+            this.recordAction(TOOL_NAMES.search_products, { q, category, min_price, max_price, in_stock_only, sort });
++            this.events.toolCall(TOOL_NAMES.search_products, { q, category, min_price, max_price, in_stock_only, sort, cursor });
++            this.recordAction(TOOL_NAMES.search_products, { q, category, min_price, max_price, in_stock_only, sort, cursor });
              if (category)
                  this.context.lastSearchedCategory = category;
              this.context.searchHistory.push(q);
 -            const cacheKey = `search:${q}:${category ?? ''}`;
-+            const cacheKey = `search:${q}:${category ?? ''}:${min_price ?? ''}:${max_price ?? ''}:${in_stock_only ?? ''}:${sort ?? ''}`;
++            const cacheKey = `search:${q}:${category ?? ''}:${min_price ?? ''}:${max_price ?? ''}:${in_stock_only ?? ''}:${sort ?? ''}:${cursor ?? ''}`;
              const cached = this.cacheGet(cacheKey);
              if (cached)
                  return this.textContent(cached);
@@ -36,11 +36,23 @@ index 0685160..3cbe980 100644
                  const result = this.useMock
                      ? mockSearchProducts(q, category)
 -                    : await this.sdk.searchProducts(q, category);
-+                    : await this.sdk.searchProducts(q, category, { min_price, max_price, in_stock_only, sort });
++                    : await this.sdk.searchProducts(q, category, { min_price, max_price, in_stock_only, sort, cursor });
                  const response = JSON.stringify({
                      products: result.products,
                      total: result.total,
-@@ -834,21 +834,21 @@ Use the category ID as the category filter in kapruka_search_products.`,
+                     query: result.query,
+                     ...(this.context.deliveryCity ? { sessionDeliveryCity: this.context.deliveryCity } : {}),
++                    // PATCH: this handler's own response-building silently dropped
++                    // result.nextCursor (KaprukaSDK.searchProducts's parsed
++                    // markdown DOES carry it) — without this, pagination cursors
++                    // never survive the KaprukaLocal -> MCP-client hop, even
++                    // though the remote server's raw response includes them.
++                    // See patches/kapruka-mcp+1.3.3.patch.
++                    ...(result.nextCursor ? { nextCursor: result.nextCursor } : {}),
+                 });
+                 const text = this.compact ? this.formatProductList(result.products) : response;
+                 this.cacheSet(cacheKey, text);
+@@ -834,21 +841,21 @@ Use the category ID as the category filter in kapruka_search_products.`,
          this.server.registerTool(TOOL_NAMES.list_delivery_cities, {
              description: `List all delivery cities with their city codes, delivery fees (LKR), and estimated delivery days.
  Use the city code (e.g. COL, KAN, JAF) in kapruka_check_delivery.`,
@@ -68,7 +80,7 @@ index 0685160..3cbe980 100644
                  const text = this.compact
                      ? result.map(c => `${c.id} | ${c.name} | ${c.delivery_fee === 0 ? 'FREE' : `LKR ${c.delivery_fee}`} | ${c.estimated_days} day${c.estimated_days !== 1 ? 's' : ''}`).join('\n')
                      : JSON.stringify(result);
-@@ -876,7 +876,7 @@ Always call this before creating an order when the customer specifies a delivery
+@@ -876,7 +883,7 @@ Always call this before creating an order when the customer specifies a delivery
              this.events.toolCall(TOOL_NAMES.check_delivery, { city, product_id, delivery_date });
              this.recordAction(TOOL_NAMES.check_delivery, { city, product_id, delivery_date });
              this.context.deliveryCity = city;
@@ -77,7 +89,7 @@ index 0685160..3cbe980 100644
              const cached = this.cacheGet(cacheKey);
              if (cached)
                  return this.textContent(cached);
-@@ -900,6 +900,7 @@ Always call this before creating an order when the customer specifies a delivery
+@@ -900,6 +907,7 @@ Always call this before creating an order when the customer specifies a delivery
                              ? 'Free delivery to this city!'
                              : `Delivery fee: LKR ${result.fee}. Arrives in ${result.estimated_days} day${result.estimated_days !== 1 ? 's' : ''}.`
                          : 'Perishable products cannot be delivered to this city due to the distance.',
@@ -85,7 +97,7 @@ index 0685160..3cbe980 100644
                  });
                  this.cacheSet(cacheKey, text);
                  return this.textContent(text);
-@@ -972,23 +973,58 @@ Rate limit: 30 orders per hour.`,
+@@ -972,23 +980,58 @@ Rate limit: 30 orders per hour.`,
              this.events.toolCall(TOOL_NAMES.create_order, { cart, recipient, delivery, sender, gift_message, currency });
              this.recordAction(TOOL_NAMES.create_order, { cart, recipient, delivery, sender, gift_message, currency });
              try {

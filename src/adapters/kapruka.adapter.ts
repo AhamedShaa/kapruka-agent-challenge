@@ -14,6 +14,7 @@ import {
   type CreateOrderRequest,
   type CartItem,
   type SearchFilters,
+  type SearchOutcome,
   type NormalizedSearchResult,
   type NormalizedProduct,
   type NormalizedCategory,
@@ -38,6 +39,7 @@ import {
 } from '@/adapters/normalizers/index.js';
 import { normalizeDateToISO, InvalidDateError } from './normalizers/dateNormalizer.js';
 import { resolveCityForDelivery } from './cityForDelivery.js';
+import { resolveSearchOutcome } from './searchRelaxation.js';
 import { logger } from '@/lib/logger.js';
 
 export type CommerceMode = 'mock' | 'live';
@@ -326,7 +328,7 @@ export class KaprukaAdapter implements CommercePort {
   // CommercePort implementation
   // -------------------------------------------------------------------------
 
-  async search(q: string, category?: string, filters?: SearchFilters): Promise<NormalizedSearchResult> {
+  async search(q: string, category?: string, filters?: SearchFilters, cursor?: string): Promise<SearchOutcome> {
     // R10 fix: live server taxonomy differs — category filtering returns 0 results live.
     const args: Record<string, unknown> = { q };
     if (category && this.mode !== 'live') args.category = category;
@@ -334,9 +336,31 @@ export class KaprukaAdapter implements CommercePort {
     if (filters?.max_price !== undefined) args.max_price = filters.max_price;
     if (filters?.in_stock_only !== undefined) args.in_stock_only = filters.in_stock_only;
     if (filters?.sort !== undefined) args.sort = filters.sort;
+    if (cursor !== undefined) args.cursor = cursor;
+
+    const filtersWereSent =
+      'category' in args || 'min_price' in args || 'max_price' in args || 'in_stock_only' in args;
 
     const raw = await this.callTool<SearchResult>(TOOL_NAMES.search_products, args);
-    return normalizeSearchResult(raw);
+    const filteredResult = normalizeSearchResult(raw);
+
+    // A cursor-driven page coming back empty just means end-of-pagination,
+    // not "filters too narrow" — the relaxation ladder doesn't apply (retrying
+    // bare would misleadingly restart from page 1). Confirmed live that
+    // cursor pagination is real and non-repeating (scripts/probe-cursor-pagination.ts).
+    if (filteredResult.products.length > 0 || !filtersWereSent || cursor !== undefined) {
+      return resolveSearchOutcome(q, filteredResult, filtersWereSent && cursor === undefined, filters, null);
+    }
+
+    // Zero-result relaxation ladder: confirmed necessary this session — the
+    // exact combination of a misspelled term + price filters together can
+    // zero out even though each piece works in isolation
+    // (scripts/probe-exact-original-combo.ts). Retry bare (no filters, no
+    // category) to tell a genuine no-match apart from filters-too-narrow.
+    const bareRaw = await this.callTool<SearchResult>(TOOL_NAMES.search_products, { q });
+    const bareResult = normalizeSearchResult(bareRaw);
+
+    return resolveSearchOutcome(q, filteredResult, filtersWereSent, filters, bareResult);
   }
 
   async getProduct(productId: string): Promise<NormalizedProduct> {

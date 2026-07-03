@@ -19,6 +19,7 @@ import { withCartLock } from '@/adapters/cartLock.js';
 import { resolveCityQuery } from './cityResolver.js';
 import { toUserSafeMessage } from './errorFormatter.js';
 import type { RenderEventEmitter } from './events.js';
+import type { LastSearchContext } from './state.js';
 
 function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -32,12 +33,48 @@ function formatPrice(price: number | null): string {
   return price !== null ? `LKR ${price}` : 'price unavailable';
 }
 
+/**
+ * Shared by searchProducts and showMoreResults — hydrates real CDN image URLs
+ * for the first 5 results (see the cap-rationale comment at its call sites),
+ * emits the carousel, and builds the full-set (not just top-3) name/price
+ * summary the LLM needs to discuss anything the carousel actually shows.
+ */
+async function hydrateAndEmitProducts(
+  adapter: CommercePort,
+  emitter: RenderEventEmitter,
+  products: NormalizedProduct[],
+  query: string,
+): Promise<{ readyProducts: NormalizedProduct[]; summary: string }> {
+  const toHydrate = products.slice(0, 5);
+  const hydrateResults = await Promise.allSettled(
+    toHydrate.map((p) => adapter.getProduct(p.id)),
+  );
+  const withImages = toHydrate.map((p, i) => {
+    const r = hydrateResults[i];
+    return r.status === 'fulfilled' ? { ...p, image_url: r.value.image_url } : p;
+  });
+  const readyProducts = [...withImages, ...products.slice(5)];
+
+  emitter.emitRender({
+    type: 'PRODUCT_LIST',
+    products: readyProducts.map(normalizedToUIProduct),
+    query,
+  });
+
+  const summary = readyProducts
+    .map((p) => `${p.name ?? 'Unnamed item'} — ${formatPrice(p.price)} (id: ${p.id})`)
+    .join(', ');
+
+  return { readyProducts, summary };
+}
+
 /** Friendly labels for the TOOL_ACTIVITY event — covers every tool routed
  * through runTool/runToolWithArtifact, plus createOrder (emitted explicitly,
  * since it doesn't use either wrapper). rememberCustomerFact is intentionally
  * excluded — it's a silent, local, near-instant operation. */
 const TOOL_LABELS: Record<string, string> = {
   searchProducts: 'Searching products',
+  showMoreResults: 'Loading more results',
   getProduct: 'Getting product details',
   checkDelivery: 'Checking delivery',
   addToCart: 'Adding to cart',
@@ -112,6 +149,7 @@ export function createTools(
   emitter: RenderEventEmitter,
   memoryStore: CustomerMemoryStore,
   browserId: string,
+  lastSearchContext: LastSearchContext | null = null,
 ): DynamicStructuredTool[] {
   const searchProducts = new DynamicStructuredTool({
     name: 'searchProducts',
@@ -122,49 +160,112 @@ export function createTools(
       'NEVER describe products from memory — always call this tool to get real data. ' +
       'When the user mentions a budget, pass it as min_price/max_price — do not leave the ' +
       'number embedded in q. Use in_stock_only to exclude out-of-stock items, and sort for ' +
-      'price_asc/price_desc/name ordering. Do not pass a category parameter when COMMERCE_MODE is live.',
+      'bestseller/newest/price_asc/price_desc/relevance ordering. Do not pass a category ' +
+      'parameter when COMMERCE_MODE is live.',
     schema: z.object({
       q: z.string(),
       category: z.string().optional(),
       min_price: z.number().optional(),
       max_price: z.number().optional(),
       in_stock_only: z.boolean().optional(),
-      sort: z.enum(['price_asc', 'price_desc', 'name']).optional(),
+      sort: z.enum(['bestseller', 'newest', 'price_asc', 'price_desc', 'relevance']).optional(),
     }),
+    responseFormat: 'content_and_artifact',
     func: async ({ q, category, min_price, max_price, in_stock_only, sort }) =>
-      runTool('searchProducts', emitter, async () => {
-        const result = await adapter.search(q, category, { min_price, max_price, in_stock_only, sort });
-        const products = dedup(result.products);
+      runToolWithArtifact<LastSearchContext | null>(
+        'searchProducts',
+        emitter,
+        async () => {
+          const result = await adapter.search(q, category, { min_price, max_price, in_stock_only, sort });
+          const products = dedup(result.products);
+          const context: LastSearchContext = {
+            q,
+            ...(category !== undefined ? { category } : {}),
+            ...(min_price !== undefined ? { min_price } : {}),
+            ...(max_price !== undefined ? { max_price } : {}),
+            ...(in_stock_only !== undefined ? { in_stock_only } : {}),
+            ...(sort !== undefined ? { sort } : {}),
+            cursor: result.cursor,
+          };
 
-        if (products.length === 0) {
-          emitter.emitRender({ type: 'PRODUCT_LIST', products: [], query: q });
-          const priceNote = max_price !== undefined ? ` under LKR ${max_price}` : '';
-          return `No results for "${q}"${priceNote}. Try a broader search term or ask the user to adjust their budget.`;
-        }
+          if (products.length === 0) {
+            emitter.emitRender({ type: 'PRODUCT_LIST', products: [], query: q });
+            // Differentiated per matchOutcome — "nothing matches this term at
+            // all" and "matches exist, just not within your filters" call for
+            // different next steps from the LLM (rephrase vs. adjust budget).
+            if (result.matchOutcome === 'filtered-empty') {
+              return [
+                `Found matches for "${q}", but none fit the filters you specified (price range and/or stock). Ask the user if they'd like to widen the budget or see the closest options anyway.`,
+                context,
+              ];
+            }
+            return [
+              `No results for "${q}" — nothing matches this term at all. Try rephrasing the search or ask the user what they had in mind.`,
+              context,
+            ];
+          }
 
-        // Hydrate real image URLs for top 5 results. search_products returns product page
-        // URLs; get_product returns the real CDN image. KaprukaLocal caches for 30 min.
-        const toHydrate = products.slice(0, 5);
-        const hydrateResults = await Promise.allSettled(
-          toHydrate.map((p) => adapter.getProduct(p.id)),
-        );
-        const withImages = toHydrate.map((p, i) => {
-          const r = hydrateResults[i];
-          return r.status === 'fulfilled' ? { ...p, image_url: r.value.image_url } : p;
-        });
-        const readyProducts = [...withImages, ...products.slice(5)];
+          // Full set, not just the top few — the carousel shows every item
+          // returned, so the LLM needs all of them nameable/priceable too
+          // (e.g. "what about the 5th one"), not just the first 3.
+          const { readyProducts, summary } = await hydrateAndEmitProducts(adapter, emitter, products, q);
+          const priceNote = max_price !== undefined ? ` (filtered to under LKR ${max_price})` : '';
+          return [
+            `Found ${readyProducts.length} results for "${q}"${priceNote}: ${summary}. Ask which one they'd like or offer to check delivery.`,
+            context,
+          ];
+        },
+        null,
+      ),
+  });
 
-        emitter.emitRender({
-          type: 'PRODUCT_LIST',
-          products: readyProducts.map(normalizedToUIProduct),
-          query: q,
-        });
+  const showMoreResults = new DynamicStructuredTool({
+    name: 'showMoreResults',
+    description:
+      "Call this when the user asks to see more, other, or additional results from their most " +
+      'recent search — never to start a new search, and never when there was no prior search ' +
+      'this conversation.',
+    schema: z.object({}),
+    responseFormat: 'content_and_artifact',
+    func: async () =>
+      runToolWithArtifact<LastSearchContext | null>(
+        'showMoreResults',
+        emitter,
+        async () => {
+          if (!lastSearchContext) {
+            return ["There's no previous search to expand — ask the user what they'd like to search for.", null];
+          }
+          if (!lastSearchContext.cursor) {
+            return [`No more results for "${lastSearchContext.q}" — that was the full list.`, lastSearchContext];
+          }
 
-        const top3 = readyProducts.slice(0, 3);
-        const summary = top3.map((p) => `${p.name ?? 'Unnamed item'} — ${formatPrice(p.price)} (id: ${p.id})`).join(', ');
-        const priceNote = max_price !== undefined ? ` (filtered to under LKR ${max_price})` : '';
-        return `Found ${readyProducts.length} results for "${q}"${priceNote}. Top matches: ${summary}. Ask which one they'd like or offer to check delivery.`;
-      }),
+          const result = await adapter.search(
+            lastSearchContext.q,
+            lastSearchContext.category,
+            {
+              min_price: lastSearchContext.min_price,
+              max_price: lastSearchContext.max_price,
+              in_stock_only: lastSearchContext.in_stock_only,
+              sort: lastSearchContext.sort,
+            },
+            lastSearchContext.cursor,
+          );
+          const products = dedup(result.products);
+          const nextContext: LastSearchContext = { ...lastSearchContext, cursor: result.cursor };
+
+          if (products.length === 0) {
+            emitter.emitRender({ type: 'PRODUCT_LIST', products: [], query: lastSearchContext.q });
+            return [`No more results for "${lastSearchContext.q}".`, nextContext];
+          }
+
+          const { readyProducts, summary } = await hydrateAndEmitProducts(adapter, emitter, products, lastSearchContext.q);
+          return [
+            `Here are ${readyProducts.length} more results for "${lastSearchContext.q}": ${summary}. Ask which one they'd like or offer to check delivery.`,
+            nextContext,
+          ];
+        },
+        lastSearchContext,
+      ),
   });
 
   const getProduct = new DynamicStructuredTool({
@@ -476,6 +577,7 @@ export function createTools(
 
   return [
     searchProducts,
+    showMoreResults,
     getProduct,
     checkDelivery,
     addToCart,
