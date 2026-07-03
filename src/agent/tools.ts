@@ -124,9 +124,9 @@ export function createTools(
             const hint = cheapest
               ? ` Cheapest available is "${cheapest.name}" at ${formatPrice(cheapest.price)}.`
               : '';
-            return `No results for "${cleanQ}" under LKR ${maxPrice}.${hint} Call getAlternatives with the same query.`;
+            return `No results for "${cleanQ}" under LKR ${maxPrice}.${hint} Try a broader search term or ask the user to adjust their budget.`;
           }
-          return `No results for "${cleanQ}". Calling getAlternatives now.`;
+          return `No results for "${cleanQ}". Try rephrasing the search or ask the user what they had in mind.`;
         }
 
         // Hydrate real image URLs for top 5 results. search_products returns product page
@@ -166,36 +166,10 @@ export function createTools(
         emitter.emitRender({ type: 'PRODUCT_DETAIL', product: normalizedToUIProduct(product) });
 
         const description = product.description ? `${product.description.slice(0, 80)}. ` : '';
-        return `${product.name ?? 'Unnamed item'} — ${formatPrice(product.price)}. ${description}In stock: ${product.in_stock ? 'yes' : 'no'}.`;
-      }),
-  });
-
-  const getAlternatives = new DynamicStructuredTool({
-    name: 'getAlternatives',
-    description:
-      'Call this automatically when searchProducts returns fewer than 2 results, or when the ' +
-      'user says results don\'t match what they want. Do not ask the user before calling — ' +
-      'just call it and say "let me look a bit wider".',
-    schema: z.object({ query: z.string() }),
-    func: async ({ query }) =>
-      runTool('getAlternatives', emitter, async () => {
-        const { cleanQ, maxPrice } = extractPriceConstraint(query);
-        const result = await adapter.getAlternatives(cleanQ, maxPrice);
-
-        const filtered = maxPrice !== undefined
-          ? result.products.filter((p) => p.price !== null && p.price <= maxPrice)
-          : result.products;
-        const products = dedup(filtered);
-
-        emitter.emitRender({
-          type: 'PRODUCT_LIST',
-          products: products.map(normalizedToUIProduct),
-          query: cleanQ,
-        });
-
-        const top3 = products.slice(0, 3);
-        const summary = top3.map((p) => `${p.name ?? 'Unnamed item'} — ${formatPrice(p.price)}`).join(', ');
-        return `Found ${products.length} alternatives. Top: ${summary}.`;
+        const vendorPart = product.vendor ? ` Vendor: ${product.vendor}.` : '';
+        const weightPart = product.weight ? ` Weight: ${product.weight}.` : '';
+        const urlPart = product.product_url ? ` URL: ${product.product_url}.` : '';
+        return `${product.name ?? 'Unnamed item'} — ${formatPrice(product.price)}. ${description}In stock: ${product.in_stock ? 'yes' : 'no'}.${vendorPart}${weightPart}${urlPart}`;
       }),
   });
 
@@ -277,6 +251,43 @@ export function createTools(
 
         const names = cart.items.map((item) => item.name).join(', ');
         return `Cart: ${cart.itemCount} item(s), LKR ${cart.total} total. Items: ${names}.`;
+      }),
+  });
+
+  const clearCart = new DynamicStructuredTool({
+    name: 'clearCart',
+    description: 'Call this when the user asks to clear their entire cart or start over.',
+    schema: z.object({}),
+    func: async () =>
+      runTool('clearCart', emitter, async () => {
+        await withCartLock(() => adapter.clearCart());
+        emitter.emitRender({ type: 'CART', items: [], total: 0, itemCount: 0 });
+        return 'Cart cleared.';
+      }),
+  });
+
+  const removeFromCart = new DynamicStructuredTool({
+    name: 'removeFromCart',
+    description:
+      'Call this when the user wants to remove one specific item from their cart, keeping the rest.',
+    schema: z.object({
+      productId: z.string().describe(
+        'The product id of the item to remove — shown in the current cart state in your context as "(id: ...)".',
+      ),
+    }),
+    func: async ({ productId }) =>
+      runTool('removeFromCart', emitter, async () => {
+        const cart = await withCartLock(() => adapter.removeFromCart(productId));
+        emitter.emitRender({
+          type: 'CART',
+          items: cart.items.map(normalizedToUICartItem),
+          total: cart.total,
+          itemCount: cart.itemCount,
+        });
+
+        if (cart.items.length === 0) return 'Item removed. Cart is now empty.';
+        const names = cart.items.map((item) => item.name).join(', ');
+        return `Item removed. Cart: ${cart.itemCount} item(s), LKR ${cart.total} total. Remaining: ${names}.`;
       }),
   });
 
@@ -457,10 +468,11 @@ export function createTools(
   return [
     searchProducts,
     getProduct,
-    getAlternatives,
     checkDelivery,
     addToCart,
     getCart,
+    clearCart,
+    removeFromCart,
     getRecommendations,
     createOrder,
     trackOrder,

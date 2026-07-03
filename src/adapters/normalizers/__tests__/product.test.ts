@@ -117,11 +117,10 @@ describe('normalizeGetProductResult', () => {
     expect(result.weight).toBeNull();
   });
 
-  it('preserves weight when the raw value is a real positive measurement (cakes fixture: "3 lbs")', () => {
+  describe('cakes fixture (cake00KA001990, get-product-cakes.raw.txt)', () => {
     const cakeRawText = loadText('get-product-cakes.raw.txt');
-    // No .parsed.json fixture exists for this capture — constructing the
-    // equivalent parsed Product from the known-real raw values captured
-    // earlier in the audit (scripts/audit-get-product-visual.ts).
+    // No .parsed.json fixture exists — constructing from known-real values
+    // captured in the get-product audit (scripts/probe-get-product-images.ts).
     const cakeProduct: Product = {
       id: 'cake00KA001990',
       name: 'Golden Celebration Chocolate Cake Indulgence',
@@ -134,8 +133,45 @@ describe('normalizeGetProductResult', () => {
       in_stock: true,
     };
 
-    const result = normalizeGetProductResult(cakeProduct, cakeRawText);
-    expect(result.weight).toBe('3 lbs');
+    it('extracts vendor from **Vendor** label when rawText is provided', () => {
+      const result = normalizeGetProductResult(cakeProduct, cakeRawText);
+      expect(result.vendor).toBe('Kapruka Cakes Cake');
+    });
+
+    it('extracts weight from **Weight** label, rejecting 0-value stubs', () => {
+      const result = normalizeGetProductResult(cakeProduct, cakeRawText);
+      expect(result.weight).toBe('3 lbs');
+    });
+
+    it('extracts product_url from [View on Kapruka] markdown link when rawText is provided', () => {
+      const result = normalizeGetProductResult(cakeProduct, cakeRawText);
+      expect(result.product_url).toBe(
+        'https://www.kapruka.com/buyonline/golden-celebration-chocolate-c/kid/cake00ka001990',
+      );
+    });
+
+    it('returns null for vendor/weight/product_url when rawText is omitted', () => {
+      const result = normalizeGetProductResult(cakeProduct);
+      expect(result.vendor).toBeNull();
+      expect(result.weight).toBeNull();
+      expect(result.product_url).toBeNull();
+    });
+
+    it('getProduct LLM return string includes vendor, weight, and product_url when present', () => {
+      const product = normalizeGetProductResult(cakeProduct, cakeRawText);
+
+      // Mirror the exact format template from src/agent/tools.ts getProduct func.
+      const description = product.description ? `${product.description.slice(0, 80)}. ` : '';
+      const vendorPart = product.vendor ? ` Vendor: ${product.vendor}.` : '';
+      const weightPart = product.weight ? ` Weight: ${product.weight}.` : '';
+      const urlPart = product.product_url ? ` URL: ${product.product_url}.` : '';
+      const str = `${product.name ?? 'Unnamed item'} — LKR ${product.price}. ${description}In stock: ${product.in_stock ? 'yes' : 'no'}.${vendorPart}${weightPart}${urlPart}`;
+
+      expect(str).toContain('Vendor: Kapruka Cakes Cake');
+      expect(str).toContain('Weight: 3 lbs');
+      expect(str).toContain('URL: https://www.kapruka.com/buyonline/golden-celebration-chocolate-c/kid/cake00ka001990');
+      expect(str).toMatch(/^Golden Celebration Chocolate Cake Indulgence — LKR 6700\./);
+    });
   });
 
   it('extracts product_url from the single [View on Kapruka] link', () => {
