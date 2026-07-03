@@ -74,9 +74,7 @@ export default function Home(): React.JSX.Element {
         setCartItems(ev.items);
         setCartTotal(ev.total);
       }
-      if (ev.type === 'PRODUCT_DETAIL') {
-        setSelectedProduct(ev.product);
-      }
+
     } else if (frame.type === 'error') {
       setMessages((prev) =>
         prev.map((m) =>

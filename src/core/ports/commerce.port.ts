@@ -113,6 +113,7 @@ export interface CommercePort {
   addToCart(productId: string, name: string, price: number, qty: number): Promise<{ message: string } & NormalizedCartView>;
   getCart(): Promise<NormalizedCartView>;
   clearCart(): Promise<void>;
+  removeFromCart(productId: string): Promise<NormalizedCartView>;
   createOrder(req: CreateOrderRequest): Promise<NormalizedOrder>;
   trackOrder(orderNumber: string): Promise<NormalizedOrder>;
   convertCurrency(amount: number, to: string): Promise<CurrencyResult>;

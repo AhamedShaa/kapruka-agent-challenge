@@ -1,9 +1,32 @@
 'use client';
 
+import { useState } from 'react';
 import type { RenderEvent, UIProduct } from '@/agent/state.js';
 import ProductCarousel from '@/components/products/ProductCarousel.js';
+import ProductDetailDrawer from '@/components/products/ProductDetailDrawer.js';
 import DeliveryCard from '@/components/delivery/DeliveryCard.js';
 import CheckoutPanel from '@/components/checkout/CheckoutPanel.js';
+
+/**
+ * Subcomponent so useState can live outside the switch-case in RenderEventView.
+ * Starts open; the X button closes it in-place without unmounting the message.
+ */
+function ProductDetailEvent({
+  product,
+  onAddToCart,
+}: {
+  product: UIProduct;
+  onAddToCart: (p: UIProduct) => void;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(true);
+  return (
+    <ProductDetailDrawer
+      product={open ? product : null}
+      onClose={() => setOpen(false)}
+      onAddToCart={onAddToCart}
+    />
+  );
+}
 
 interface RenderEventViewProps {
   event: RenderEvent;
@@ -33,7 +56,7 @@ export default function RenderEventView({
       );
 
     case 'PRODUCT_DETAIL':
-      return null;
+      return <ProductDetailEvent product={event.product} onAddToCart={onAddToCart} />;
 
     case 'CART':
       return null;

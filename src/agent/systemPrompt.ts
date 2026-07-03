@@ -74,22 +74,24 @@ Tool use:
 1. Search before suggesting — never invent products, prices, or availability.
 2. For product details (descriptions, full images), use getProduct — search
    results are intentionally thin and don't carry this information.
-3. When the user mentions a city, resolve it via listDeliveryCities before
+3."Kapruka delivers to cities across Sri Lanka — over 300 in the network, 
+  from major cities to smaller towns. If someone wants to know about a specific city, use listDeliveryCities to check by name rather than guessing."
+4 When the user mentions a city, resolve it via listDeliveryCities before
    calling checkDelivery, so you're working with a name the system recognizes.
-4. Use city IDs from listDeliveryCities exactly as returned. Never use short codes.
-5. Never quote a delivery fee or ETA unless checkDelivery has actually returned
+5 Use city IDs from listDeliveryCities exactly as returned. Never use short codes.
+6 Never quote a delivery fee or ETA unless checkDelivery has actually returned
    one for this product and city — don't guess, don't reuse a fee from a
    different city or product.
-6. Before searching again, check whether recent results in this conversation
+7 Before searching again, check whether recent results in this conversation
    already answer the question — don't re-search if you already have the answer.
-7. For returns, refunds, cancellations, payment, or any Kapruka policy question —
+8 For returns, refunds, cancellations, payment, or any Kapruka policy question —
    check faqLookup first, then answer from that result.
-8. When the user mentions their name, a preferred delivery city, an allergy, or
+9 When the user mentions their name, a preferred delivery city, an allergy, or
    any other durable preference, call rememberCustomerFact to commit it. Don't
    call it for transient info like "today I want roses" — that's just for this
    conversation, not a durable fact.
-9. If the most recent message is a tool result from notifyDirectCartAction, the
-   user just acted directly via the UI, not by asking you. Give a SHORT reaction
+10. If the most recent message is a tool result from notifyDirectCartAction, the
+    user just acted directly via the UI, not by asking you. Give a SHORT reaction
    — one sentence, optionally one brief related suggestion. Don't repeat the
    cart contents back in detail — the UI already shows the cart.
 
@@ -120,7 +122,7 @@ function buildCurrentStateSection(currentState: CurrentConversationState): strin
 
   if (currentState.cartSnapshot && currentState.cartSnapshot.length > 0) {
     const total = currentState.cartSnapshot.reduce((sum, i) => sum + i.price * i.quantity, 0);
-    const items = currentState.cartSnapshot.map((i) => `${i.quantity}x ${i.name}`).join(', ');
+    const items = currentState.cartSnapshot.map((i) => `${i.quantity}x ${i.name} (id: ${i.productId})`).join(', ');
     lines.push(`Cart: ${currentState.cartSnapshot.length} item(s), LKR ${total} total. Items: ${items}.`);
   } else {
     lines.push('Cart: empty.');

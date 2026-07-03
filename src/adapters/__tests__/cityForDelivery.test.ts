@@ -31,6 +31,7 @@ function stubAdapter(cityNames: string[]): CommercePort {
     addToCart: notImplemented('addToCart'),
     getCart: notImplemented('getCart'),
     clearCart: notImplemented('clearCart'),
+    removeFromCart: notImplemented('removeFromCart'),
     createOrder: notImplemented('createOrder'),
     trackOrder: notImplemented('trackOrder'),
     convertCurrency: notImplemented('convertCurrency'),
