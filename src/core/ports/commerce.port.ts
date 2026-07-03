@@ -97,12 +97,25 @@ export interface CurrencyResult {
 }
 
 /**
+ * search_products filters — confirmed live via raw-protocol probe
+ * (scripts/probe-search-raw-filters.ts) to be genuinely honored server-side,
+ * once actually forwarded (see patches/kapruka-mcp+1.3.3.patch for the
+ * vendor-side plumbing this required).
+ */
+export interface SearchFilters {
+  min_price?: number;
+  max_price?: number;
+  in_stock_only?: boolean;
+  sort?: 'price_asc' | 'price_desc' | 'name';
+}
+
+/**
  * The single seam between the agent core and the Kapruka commerce backend.
  * The agent depends only on this interface — only KaprukaAdapter may import
  * from 'kapruka-mcp'.
  */
 export interface CommercePort {
-  search(q: string, category?: string): Promise<NormalizedSearchResult>;
+  search(q: string, category?: string, filters?: SearchFilters): Promise<NormalizedSearchResult>;
   getProduct(productId: string): Promise<NormalizedProduct>;
   getAlternatives(query: string, maxPrice?: number): Promise<NormalizedSearchResult>;
   getRecommendations(category: string): Promise<NormalizedSearchResult>;

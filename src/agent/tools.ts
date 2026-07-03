@@ -2,7 +2,6 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 
 import {
-  KaprukaError,
   type CommercePort,
   type CreateOrderRequest,
   type NormalizedProduct,
@@ -18,6 +17,7 @@ import { logger } from '@/lib/logger.js';
 import { searchFAQ } from '@/lib/faq.js';
 import { withCartLock } from '@/adapters/cartLock.js';
 import { resolveCityQuery } from './cityResolver.js';
+import { toUserSafeMessage } from './errorFormatter.js';
 import type { RenderEventEmitter } from './events.js';
 
 function toMessage(err: unknown): string {
@@ -32,15 +32,24 @@ function formatPrice(price: number | null): string {
   return price !== null ? `LKR ${price}` : 'price unavailable';
 }
 
-function extractPriceConstraint(q: string): { cleanQ: string; maxPrice?: number } {
-  const m = q.match(
-    /(?:under|below|less than|max|up to|within|not more than)\s*(?:lkr\s*)?(\d[\d,]*)/i,
-  );
-  if (!m) return { cleanQ: q };
-  const maxPrice = parseInt(m[1].replace(/,/g, ''), 10);
-  const cleanQ = q.replace(m[0], '').replace(/\s+/g, ' ').trim() || q;
-  return { cleanQ, maxPrice };
-}
+/** Friendly labels for the TOOL_ACTIVITY event — covers every tool routed
+ * through runTool/runToolWithArtifact, plus createOrder (emitted explicitly,
+ * since it doesn't use either wrapper). rememberCustomerFact is intentionally
+ * excluded — it's a silent, local, near-instant operation. */
+const TOOL_LABELS: Record<string, string> = {
+  searchProducts: 'Searching products',
+  getProduct: 'Getting product details',
+  checkDelivery: 'Checking delivery',
+  addToCart: 'Adding to cart',
+  getCart: 'Checking your cart',
+  clearCart: 'Clearing your cart',
+  removeFromCart: 'Removing item',
+  getRecommendations: 'Finding recommendations',
+  createOrder: 'Placing your order',
+  convertCurrency: 'Converting currency',
+  listDeliveryCities: 'Looking up delivery cities',
+  faqLookup: 'Checking policy details',
+};
 
 /**
  * Runs a tool body, emitting an ERROR render event and returning a short
@@ -51,13 +60,18 @@ async function runTool(
   emitter: RenderEventEmitter,
   fn: () => Promise<string>,
 ): Promise<string> {
+  emitter.emitRender({
+    type: 'TOOL_ACTIVITY',
+    tool: toolName,
+    label: TOOL_LABELS[toolName] ?? toolName,
+    status: 'pending',
+  });
   try {
     return await fn();
   } catch (err) {
-    const message = err instanceof KaprukaError ? err.message : toMessage(err);
-    logger.error({ tool: toolName, err: message }, 'agent tool failed');
+    const message = toUserSafeMessage(err, toolName);
     emitter.emitRender({ type: 'ERROR', message, tool: toolName });
-    return `Couldn't complete that just now — ${message}. Let's try again in a moment.`;
+    return message;
   }
 }
 
@@ -78,16 +92,18 @@ async function runToolWithArtifact<A>(
   fn: () => Promise<[string, A]>,
   errorArtifact: A,
 ): Promise<[string, A]> {
+  emitter.emitRender({
+    type: 'TOOL_ACTIVITY',
+    tool: toolName,
+    label: TOOL_LABELS[toolName] ?? toolName,
+    status: 'pending',
+  });
   try {
     return await fn();
   } catch (err) {
-    const message = err instanceof KaprukaError ? err.message : toMessage(err);
-    logger.error({ tool: toolName, err: message }, 'agent tool failed');
+    const message = toUserSafeMessage(err, toolName);
     emitter.emitRender({ type: 'ERROR', message, tool: toolName });
-    return [
-      `Couldn't complete that just now — ${message}. Let's try again in a moment.`,
-      errorArtifact,
-    ];
+    return [message, errorArtifact];
   }
 }
 
@@ -104,29 +120,26 @@ export function createTools(
       'Also call this when the user describes what they want as a gift, occasion, or recipient ' +
       'without naming a product (e.g. "something for my mum", "birthday gift under 5000"). ' +
       'NEVER describe products from memory — always call this tool to get real data. ' +
-      'Do not pass a category parameter when COMMERCE_MODE is live.',
-    schema: z.object({ q: z.string(), category: z.string().optional() }),
-    func: async ({ q, category }) =>
+      'When the user mentions a budget, pass it as min_price/max_price — do not leave the ' +
+      'number embedded in q. Use in_stock_only to exclude out-of-stock items, and sort for ' +
+      'price_asc/price_desc/name ordering. Do not pass a category parameter when COMMERCE_MODE is live.',
+    schema: z.object({
+      q: z.string(),
+      category: z.string().optional(),
+      min_price: z.number().optional(),
+      max_price: z.number().optional(),
+      in_stock_only: z.boolean().optional(),
+      sort: z.enum(['price_asc', 'price_desc', 'name']).optional(),
+    }),
+    func: async ({ q, category, min_price, max_price, in_stock_only, sort }) =>
       runTool('searchProducts', emitter, async () => {
-        const { cleanQ, maxPrice } = extractPriceConstraint(q);
-        const result = await adapter.search(cleanQ, category);
-
-        const filtered = maxPrice !== undefined
-          ? result.products.filter((p) => p.price !== null && p.price <= maxPrice)
-          : result.products;
-        const products = dedup(filtered);
+        const result = await adapter.search(q, category, { min_price, max_price, in_stock_only, sort });
+        const products = dedup(result.products);
 
         if (products.length === 0) {
-          emitter.emitRender({ type: 'PRODUCT_LIST', products: [], query: cleanQ });
-          if (maxPrice !== undefined) {
-            const priced = result.products.filter((p) => p.price !== null);
-            const cheapest = [...priced].sort((a, b) => (a.price as number) - (b.price as number))[0];
-            const hint = cheapest
-              ? ` Cheapest available is "${cheapest.name}" at ${formatPrice(cheapest.price)}.`
-              : '';
-            return `No results for "${cleanQ}" under LKR ${maxPrice}.${hint} Try a broader search term or ask the user to adjust their budget.`;
-          }
-          return `No results for "${cleanQ}". Try rephrasing the search or ask the user what they had in mind.`;
+          emitter.emitRender({ type: 'PRODUCT_LIST', products: [], query: q });
+          const priceNote = max_price !== undefined ? ` under LKR ${max_price}` : '';
+          return `No results for "${q}"${priceNote}. Try a broader search term or ask the user to adjust their budget.`;
         }
 
         // Hydrate real image URLs for top 5 results. search_products returns product page
@@ -144,13 +157,13 @@ export function createTools(
         emitter.emitRender({
           type: 'PRODUCT_LIST',
           products: readyProducts.map(normalizedToUIProduct),
-          query: cleanQ,
+          query: q,
         });
 
         const top3 = readyProducts.slice(0, 3);
         const summary = top3.map((p) => `${p.name ?? 'Unnamed item'} — ${formatPrice(p.price)} (id: ${p.id})`).join(', ');
-        const priceNote = maxPrice !== undefined ? ` (filtered to under LKR ${maxPrice})` : '';
-        return `Found ${readyProducts.length} results for "${cleanQ}"${priceNote}. Top matches: ${summary}. Ask which one they'd like or offer to check delivery.`;
+        const priceNote = max_price !== undefined ? ` (filtered to under LKR ${max_price})` : '';
+        return `Found ${readyProducts.length} results for "${q}"${priceNote}. Top matches: ${summary}. Ask which one they'd like or offer to check delivery.`;
       }),
   });
 
@@ -168,7 +181,7 @@ export function createTools(
         const description = product.description ? `${product.description.slice(0, 80)}. ` : '';
         const vendorPart = product.vendor ? ` Vendor: ${product.vendor}.` : '';
         const weightPart = product.weight ? ` Weight: ${product.weight}.` : '';
-        const urlPart = product.product_url ? ` URL: ${product.product_url}.` : '';
+        const urlPart = product.product_url ? ` View more details [here](${product.product_url}).` : '';
         return `${product.name ?? 'Unnamed item'} — ${formatPrice(product.price)}. ${description}In stock: ${product.in_stock ? 'yes' : 'no'}.${vendorPart}${weightPart}${urlPart}`;
       }),
   });
@@ -209,16 +222,20 @@ export function createTools(
     name: 'addToCart',
     description:
       'Call this when the user says they want to add an item to their cart, buy something, ' +
-      'or proceed with a product. You need the product id, name, and price from a previous ' +
-      'searchProducts or getProduct call.',
+      'or proceed with a product. You only need the product id — name and price are looked up ' +
+      'server-side from the canonical product record, never taken from your own memory.',
     schema: z.object({
       productId: z.string(),
-      name: z.string(),
-      price: z.number(),
       quantity: z.number().default(1),
     }),
-    func: async ({ productId, name, price, quantity }) =>
+    func: async ({ productId, quantity }) =>
       runTool('addToCart', emitter, async () => {
+        // Canonical name/price, never LLM-supplied — closes off the class of bug
+        // where a hallucinated or stale price/name gets written into the cart.
+        const product = await adapter.getProduct(productId);
+        const name = product.name ?? productId;
+        const price = product.price ?? 0;
+
         const cart = await withCartLock(() => adapter.addToCart(productId, name, price, quantity));
         emitter.emitRender({
           type: 'CART',
@@ -342,6 +359,12 @@ export function createTools(
       senderName,
       giftMessage,
     }) => {
+      emitter.emitRender({
+        type: 'TOOL_ACTIVITY',
+        tool: 'createOrder',
+        label: TOOL_LABELS.createOrder,
+        status: 'pending',
+      });
       try {
         const cart = await adapter.getCart();
         const request: CreateOrderRequest = {
@@ -371,25 +394,11 @@ export function createTools(
 
         return `Order created. Payment link ready. Order ID: ${orderId}. Link expires in 60 minutes.`;
       } catch (err) {
-        const message = err instanceof KaprukaError ? err.message : toMessage(err);
-        logger.error({ tool: 'createOrder', err: message }, 'agent tool failed');
+        const message = toUserSafeMessage(err, 'createOrder');
         emitter.emitRender({ type: 'ERROR', message, tool: 'createOrder' });
-        return `Could not create order right now. ${message}. Please try again in a moment.`;
+        return message;
       }
     },
-  });
-
-  const trackOrder = new DynamicStructuredTool({
-    name: 'trackOrder',
-    description:
-      'Call this when the user provides an order number and asks about delivery status, ' +
-      'or asks to track their order.',
-    schema: z.object({ orderNumber: z.string() }),
-    func: async ({ orderNumber }) =>
-      runTool('trackOrder', emitter, async () => {
-        const order = await adapter.trackOrder(orderNumber);
-        return `Order ${orderNumber}: ${order.status ?? 'status unavailable'}.`;
-      }),
   });
 
   const convertCurrency = new DynamicStructuredTool({
@@ -475,7 +484,6 @@ export function createTools(
     removeFromCart,
     getRecommendations,
     createOrder,
-    trackOrder,
     convertCurrency,
     listDeliveryCities,
     rememberCustomerFact,

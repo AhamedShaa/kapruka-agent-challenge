@@ -13,6 +13,7 @@ import {
   type CurrencyResult,
   type CreateOrderRequest,
   type CartItem,
+  type SearchFilters,
   type NormalizedSearchResult,
   type NormalizedProduct,
   type NormalizedCategory,
@@ -325,10 +326,14 @@ export class KaprukaAdapter implements CommercePort {
   // CommercePort implementation
   // -------------------------------------------------------------------------
 
-  async search(q: string, category?: string): Promise<NormalizedSearchResult> {
+  async search(q: string, category?: string, filters?: SearchFilters): Promise<NormalizedSearchResult> {
     // R10 fix: live server taxonomy differs — category filtering returns 0 results live.
     const args: Record<string, unknown> = { q };
     if (category && this.mode !== 'live') args.category = category;
+    if (filters?.min_price !== undefined) args.min_price = filters.min_price;
+    if (filters?.max_price !== undefined) args.max_price = filters.max_price;
+    if (filters?.in_stock_only !== undefined) args.in_stock_only = filters.in_stock_only;
+    if (filters?.sort !== undefined) args.sort = filters.sort;
 
     const raw = await this.callTool<SearchResult>(TOOL_NAMES.search_products, args);
     return normalizeSearchResult(raw);
