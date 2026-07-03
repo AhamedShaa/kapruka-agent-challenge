@@ -32,6 +32,7 @@ import {
   normalizeCartView,
   normalizeCreateOrderResult,
   normalizeTrackOrderResult,
+  normalizeOrderFromMarkdown,
   type RawCartView,
 } from '@/adapters/normalizers/index.js';
 import { normalizeDateToISO, InvalidDateError } from './normalizers/dateNormalizer.js';
@@ -334,8 +335,8 @@ export class KaprukaAdapter implements CommercePort {
   }
 
   async getProduct(productId: string): Promise<NormalizedProduct> {
-    const raw = await this.callTool<Product>(TOOL_NAMES.get_product, { product_id: productId });
-    return normalizeGetProductResult(raw);
+    const raw = await this.callTool<Product & { _rawMarkdown?: string }>(TOOL_NAMES.get_product, { product_id: productId });
+    return normalizeGetProductResult(raw, raw._rawMarkdown);
   }
 
   async getAlternatives(query: string, maxPrice?: number): Promise<NormalizedSearchResult> {
@@ -482,22 +483,63 @@ export class KaprukaAdapter implements CommercePort {
     await this.callTool<{ message: string }>(TOOL_NAMES.clear_cart, {});
   }
 
-  async createOrder(req: CreateOrderRequest): Promise<NormalizedOrder> {
-    // The live API uses a different parameter schema than the mock:
-    // recipient/sender carry less, delivery carries more (address, city).
-    const args: Record<string, unknown> =
-      this.mode === 'live'
-        ? {
-            cart: req.cart,
-            recipient: { name: req.recipient.name, phone: req.recipient.phone },
-            delivery: { date: req.delivery.date, address: req.recipient.address, city: req.recipient.city },
-            sender: { name: req.sender.name },
-            ...(req.gift_message ? { gift_message: req.gift_message } : {}),
-            ...(req.currency ? { currency: req.currency } : {}),
-          }
-        : { ...req };
+  async removeFromCart(productId: string): Promise<NormalizedCartView> {
+    const current = await this.getCart();
+    const remaining = current.items.filter((item) => item.productId !== productId);
+    await this.clearCart();
+    for (const item of remaining) {
+      await this.addToCart(item.productId, item.name, item.price, item.quantity);
+    }
+    return this.getCart();
+  }
 
-    const raw = await this.callTool<{
+  async createOrder(req: CreateOrderRequest): Promise<NormalizedOrder> {
+    // Inline Sri Lankan mobile number check — avoids a round-trip that would
+    // just fail at the live API anyway.
+    const SL_PHONE = /^(?:\+94|0)7\d{8}$/;
+    if (!SL_PHONE.test(req.recipient.phone.replace(/[\s\-()]/g, ''))) {
+      throw new KaprukaError({
+        tool: TOOL_NAMES.create_order,
+        message: 'Please provide a valid Sri Lankan mobile number, e.g. 0771234567.',
+      });
+    }
+
+    // Normalize the delivery date — same treatment as checkDelivery.
+    let isoDate: string;
+    try {
+      isoDate = normalizeDateToISO(req.delivery.date);
+    } catch (e) {
+      if (e instanceof InvalidDateError) {
+        const tomorrow = normalizeDateToISO(undefined); // safe: always a future date
+        throw new KaprukaError({
+          tool: TOOL_NAMES.create_order,
+          message: `That delivery date doesn't look right. Did you mean ${tomorrow}? Please confirm the date and I'll try again.`,
+        });
+      }
+      throw e;
+    }
+
+    // Always send KaprukaLocal-format (recipient carries address + city).
+    // The local server's live-mode handler remaps to the live API's schema.
+    const args: Record<string, unknown> = {
+      cart: req.cart,
+      recipient: {
+        name: req.recipient.name,
+        phone: req.recipient.phone,
+        address: req.recipient.address,
+        city: req.recipient.city,
+        ...(req.recipient.postal_code ? { postal_code: req.recipient.postal_code } : {}),
+      },
+      delivery: {
+        date: isoDate,
+        ...(req.delivery.instructions ? { instructions: req.delivery.instructions } : {}),
+      },
+      sender: { name: req.sender.name, phone: req.sender.phone },
+      ...(req.gift_message ? { gift_message: req.gift_message } : {}),
+      ...(req.currency ? { currency: req.currency } : {}),
+    };
+
+    const { parsed: raw } = await this.callToolWithRaw<{
       orderId: string;
       checkoutUrl: string;
       total: string;
@@ -505,14 +547,20 @@ export class KaprukaAdapter implements CommercePort {
       items: Order['items'];
       status: string;
       expiresAt: string;
+      _rawMarkdown?: string;
     }>(TOOL_NAMES.create_order, args);
 
+    // In live mode KaprukaLocal embeds the real API markdown in _rawMarkdown.
+    // normalizeOrderFromMarkdown extracts the real ORD-YYYYMMDD-XXXX id and the
+    // legacy .jsp checkout URL that the vendor's own regexes miss.
+    const fromMarkdown = raw._rawMarkdown ? normalizeOrderFromMarkdown(raw._rawMarkdown) : null;
+
     return normalizeCreateOrderResult({
-      id: raw.orderId,
+      id: fromMarkdown?.id ?? raw.orderId,
       items: raw.items,
-      total: parseLkr(raw.total),
+      total: fromMarkdown?.total ?? parseLkr(raw.total),
       currency: raw.currency,
-      checkout_url: raw.checkoutUrl,
+      checkout_url: fromMarkdown?.checkoutUrl ?? raw.checkoutUrl,
       status: raw.status,
       created_at: new Date().toISOString(),
       expires_at: raw.expiresAt,

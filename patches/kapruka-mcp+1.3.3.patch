@@ -1,7 +1,16 @@
 diff --git a/node_modules/kapruka-mcp/dist/local/server.js b/node_modules/kapruka-mcp/dist/local/server.js
-index 0685160..bf9eba7 100644
+index 0685160..5975b2a 100644
 --- a/node_modules/kapruka-mcp/dist/local/server.js
 +++ b/node_modules/kapruka-mcp/dist/local/server.js
+@@ -93,7 +93,7 @@ const CreateOrderSchema = {
+     }).describe('Delivery schedule'),
+     sender: z.object({
+         name: z.string().describe('Sender full name'),
+-        phone: z.string().describe('Sender phone number'),
++        phone: z.string().optional().describe('Sender phone number'),
+     }).describe('Sender details'),
+     gift_message: z.string().optional().describe('Gift message to include with the order'),
+     currency: z.string().optional().describe('Currency code (default: LKR)'),
 @@ -834,21 +834,21 @@ Use the category ID as the category filter in kapruka_search_products.`,
          this.server.registerTool(TOOL_NAMES.list_delivery_cities, {
              description: `List all delivery cities with their city codes, delivery fees (LKR), and estimated delivery days.
@@ -47,11 +56,108 @@ index 0685160..bf9eba7 100644
                  });
                  this.cacheSet(cacheKey, text);
                  return this.textContent(text);
+@@ -972,23 +973,58 @@ Rate limit: 30 orders per hour.`,
+             this.events.toolCall(TOOL_NAMES.create_order, { cart, recipient, delivery, sender, gift_message, currency });
+             this.recordAction(TOOL_NAMES.create_order, { cart, recipient, delivery, sender, gift_message, currency });
+             try {
+-                const result = this.useMock
+-                    ? mockCreateOrder(cart)
+-                    : await this.sdk.createOrder({ cart, recipient, delivery, sender, gift_message, currency });
+-                if (!result) {
+-                    return this.errorContent(TOOL_NAMES.create_order, 'Could not create order. One or more product IDs may be invalid or out of stock.', 'Use kapruka_get_product to verify stock status before ordering.');
++                if (this.useMock) {
++                    const result = mockCreateOrder(cart);
++                    if (!result) {
++                        return this.errorContent(TOOL_NAMES.create_order, 'Could not create order. One or more product IDs may be invalid or out of stock.', 'Use kapruka_get_product to verify stock status before ordering.');
++                    }
++                    this.context.orderIds.push(result.id);
++                    return this.textContent(JSON.stringify({
++                        orderId: result.id,
++                        checkoutUrl: result.checkout_url,
++                        total: `LKR ${result.total.toLocaleString()}`,
++                        currency: result.currency,
++                        items: result.items,
++                        status: result.status,
++                        expiresAt: result.expires_at,
++                        message: `Order created! Complete payment at the checkout URL within 60 minutes to confirm your order.`,
++                    }));
++                }
++                else {
++                    // PATCH: Transform KaprukaLocal-format → live-server-format before HTTP call,
++                    // call callToolRaw directly, and embed _rawMarkdown in the response so the
++                    // adapter's normalizer can extract the real ORD-YYYYMMDD-XXXX id and the
++                    // legacy .jsp checkout URL (which contains no "checkout" substring).
++                    const liveArgs = {
++                        cart,
++                        recipient: { name: recipient.name, phone: recipient.phone },
++                        delivery: { date: delivery.date, city: recipient.city, address: recipient.address },
++                        sender: { name: sender.name },
++                        ...(gift_message ? { gift_message } : {}),
++                        ...(currency ? { currency } : {}),
++                    };
++                    const rawText = await this.sdk.callToolRaw('kapruka_create_order', liveArgs);
++                    // Business-logic failures return as plain-string "Error (CODE): message".
++                    // Schema/Pydantic failures throw (caught below).
++                    if (/^Error \([A-Z_]+\)/i.test(rawText) || rawText.startsWith('Error')) {
++                        return this.errorContent(TOOL_NAMES.create_order, rawText);
++                    }
++                    // orderId/checkoutUrl are placeholders here — the adapter's
++                    // normalizeOrderFromMarkdown extracts the real values from _rawMarkdown.
++                    // (parseOrderResult is not in scope in server.js, and its regexes
++                    // wouldn't match the live server's ORD-YYYYMMDD-XXXX format anyway.)
++                    return this.textContent(JSON.stringify({
++                        orderId: '',
++                        checkoutUrl: '',
++                        total: 'LKR 0',
++                        currency: 'LKR',
++                        items: [],
++                        status: 'pending',
++                        expiresAt: new Date(Date.now() + 3600000).toISOString(),
++                        _rawMarkdown: rawText,
++                        message: `Order created! Complete payment at the checkout URL within 60 minutes to confirm your order.`,
++                    }));
+                 }
+-                this.context.orderIds.push(result.id);
+-                return this.textContent(JSON.stringify({
+-                    orderId: result.id,
+-                    checkoutUrl: result.checkout_url,
+-                    total: `LKR ${result.total.toLocaleString()}`,
+-                    currency: result.currency,
+-                    items: result.items,
+-                    status: result.status,
+-                    expiresAt: result.expires_at,
+-                    message: `Order created! Complete payment at the checkout URL within 60 minutes to confirm your order.`,
+-                }));
+             }
+             catch (err) {
+                 const error = err instanceof Error ? err : new Error(String(err));
 diff --git a/node_modules/kapruka-mcp/dist/sdk/client.js b/node_modules/kapruka-mcp/dist/sdk/client.js
-index 7da7c82..a0e2862 100644
+index 7da7c82..2ecad77 100644
 --- a/node_modules/kapruka-mcp/dist/sdk/client.js
 +++ b/node_modules/kapruka-mcp/dist/sdk/client.js
-@@ -190,6 +190,12 @@ export class KaprukaSDK {
+@@ -123,15 +123,19 @@ export class KaprukaSDK {
+     async getProduct(product_id) {
+         if (this.isOfficialServer) {
+             const rawText = await this.callToolRaw('kapruka_get_product', { product_id });
++            // PATCH: preserve raw markdown so consumers can extract fields the
++            // SDK parser drops (vendor, weight, product_url). Same pattern as
++            // checkDelivery. See patches/kapruka-mcp+1.3.3.patch.
+             try {
+-                return JSON.parse(rawText);
++                const parsed = JSON.parse(rawText);
++                return { ...parsed, _rawMarkdown: rawText };
+             }
+             catch {
+                 if (isMarkdownResponse(rawText)) {
+                     const product = parseProductDetails(rawText);
+                     if (!product)
+                         throw new Error(`Product "${product_id}" not found`);
+-                    return product;
++                    return { ...product, _rawMarkdown: rawText };
+                 }
+                 throw new Error('Unexpected response format from get_product');
+             }
+@@ -190,6 +194,12 @@ export class KaprukaSDK {
                  if (isMarkdownResponse(rawText)) {
                      return parseCityList(rawText);
                  }
@@ -64,7 +170,7 @@ index 7da7c82..a0e2862 100644
                  throw new Error('Unexpected response format from list_delivery_cities');
              }
          }
-@@ -199,15 +205,19 @@ export class KaprukaSDK {
+@@ -199,15 +209,19 @@ export class KaprukaSDK {
          const args = { city, product_id, ...(delivery_date ? { delivery_date } : {}) };
          if (this.isOfficialServer) {
              const rawText = await this.callToolRaw('kapruka_check_delivery', args);
