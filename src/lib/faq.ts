@@ -91,7 +91,7 @@ const FAQ_ENTRIES: FaqEntry[] = [
   },
   {
     question: 'Perishables and northern/eastern delivery',
-    keywords: ['perishable', 'cake', 'flowers', 'fresh', 'north', 'east'],
+    keywords: ['perishable', 'northern province', 'jaffna', 'trincomalee', "can't deliver", 'fresh', 'north', 'east'],
     answer:
       "Fresh items like cakes and flowers can't be delivered to the Northern and Eastern provinces (Jaffna, Trincomalee, Batticaloa, Vavuniya, Polonnaruwa) due to the 2-3 day journey. I can suggest non-perishable alternatives or the nearest available city.",
   },
@@ -105,7 +105,7 @@ export function searchFAQ(query: string): string | null {
   const q = query.toLowerCase();
   for (const entry of FAQ_ENTRIES) {
     const matchCount = entry.keywords.filter((kw) => q.includes(kw.toLowerCase())).length;
-    if (matchCount >= 2) return entry.answer;
+    if (matchCount >= 1) return entry.answer;
   }
   return null;
 }
