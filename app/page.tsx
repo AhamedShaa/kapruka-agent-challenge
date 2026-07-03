@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ShoppingCart } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import type { Components } from 'react-markdown';
 
 import type { RenderEvent, UICartItem, UIProduct } from '@/agent/state.js';
 import ChatInput from '@/components/chat/ChatInput.js';
@@ -14,7 +17,7 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  renderEvent?: RenderEvent;
+  renderEvents?: RenderEvent[];
   isStreaming?: boolean;
 }
 
@@ -31,6 +34,25 @@ function isSseFrame(v: unknown): v is SseFrame {
 function uuid(): string {
   return crypto.randomUUID();
 }
+
+// Forces every markdown link (product URLs, checkout links the assistant
+// might reference) to open in a new tab — same-tab navigation would abandon
+// the user's cart/conversation mid-chat.
+const markdownComponents: Components = {
+  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-blue-600 underline hover:text-blue-700"
+    >
+      {children}
+    </a>
+  ),
+  ul: ({ children }) => <ul className="list-disc pl-5 mb-2 last:mb-0">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 last:mb-0">{children}</ol>,
+};
 
 export default function Home(): React.JSX.Element {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -68,7 +90,9 @@ export default function Home(): React.JSX.Element {
     } else if (frame.type === 'render') {
       const ev = frame.event;
       setMessages((prev) =>
-        prev.map((m) => (m.id === assistantMsgId ? { ...m, renderEvent: ev } : m)),
+        prev.map((m) =>
+          m.id === assistantMsgId ? { ...m, renderEvents: [...(m.renderEvents ?? []), ev] } : m,
+        ),
       );
       if (ev.type === 'CART') {
         setCartItems(ev.items);
@@ -326,24 +350,27 @@ export default function Home(): React.JSX.Element {
               </div>
             ) : (
               <div key={msg.id} className="flex flex-col">
-                {msg.isStreaming && !msg.content && !msg.renderEvent ? (
+                {msg.isStreaming && !msg.content && !msg.renderEvents?.length ? (
                   <TypingIndicator />
                 ) : (
                   <>
                     {msg.content && (
-                      <p className="text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">
-                        {msg.content}
-                      </p>
+                      <div className="text-sm leading-relaxed text-gray-800">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                          {msg.content}
+                        </ReactMarkdown>
+                      </div>
                     )}
-                    {msg.renderEvent && (
+                    {msg.renderEvents?.map((ev, i) => (
                       <RenderEventView
-                        event={msg.renderEvent}
+                        key={i}
+                        event={ev}
                         isStreaming={msg.isStreaming}
                         onAddToCart={handleAddToCart}
                         onViewDetail={handleViewDetail}
                         onSendMessage={(t) => { sendMessage(t).catch(() => null); }}
                       />
-                    )}
+                    ))}
                   </>
                 )}
               </div>

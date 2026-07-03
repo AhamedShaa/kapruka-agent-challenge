@@ -102,6 +102,14 @@ export default function RenderEventView({
     case 'ERROR':
       return <p className="text-sm text-red-500 mt-1">{event.message}</p>;
 
+    case 'TOOL_ACTIVITY':
+      return (
+        <p className="text-xs text-gray-400 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-pulse" />
+          {event.label}
+        </p>
+      );
+
     default:
       return null;
   }

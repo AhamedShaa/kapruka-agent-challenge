@@ -138,6 +138,12 @@ export const renderEventSchema = z.discriminatedUnion('type', [
     message: z.string(),
     tool: z.string(),
   }),
+  z.object({
+    type: z.literal('TOOL_ACTIVITY'),
+    tool: z.string(),
+    label: z.string(),
+    status: z.literal('pending'),
+  }),
 ]);
 
 export type RenderEvent = z.infer<typeof renderEventSchema>;

@@ -22,6 +22,21 @@ function parseWeight(matched: string | null): string | null {
   return trimmed;
 }
 
+/**
+ * Corrects a confirmed live-data corruption: an apostrophe (originally U+2019)
+ * that got mis-decoded as UTF-8-read-as-Latin-1 ("â€™") and then had its "&"
+ * stripped and numeric refs run together with a stray "n" between each — e.g.
+ * "Menn#226;n#8364;n#8482;s Gift Box" instead of "Men's Gift Box". Confirmed
+ * via live probe (scripts/probe-mojibake-raw.ts) on 6 SKUs in one product
+ * line; pattern-matched here (not hardcoded to those SKUs) since the
+ * corruption's full scope in the catalog is unconfirmed.
+ */
+const MOJIBAKE_APOSTROPHE = /(?:n#\d+;)+/g;
+
+function sanitizeProductName(name: string): string {
+  return name.replace(MOJIBAKE_APOSTROPHE, "'");
+}
+
 function extractVendor(rawText: string): string | null {
   const m = rawText.match(/\*\*Vendor\*\*:\s*(.+)/);
   return m ? m[1].trim() : null;
@@ -85,7 +100,7 @@ export function normalizeSearchProduct(raw: Product, rawText?: string): Normaliz
   return buildProduct(
     raw,
     {
-      name: raw.name ? present(raw.name) : absent,
+      name: raw.name ? present(sanitizeProductName(raw.name)) : absent,
       // Decision #1 (LOCKED): a parsed 0 is indistinguishable from a real free item — always null.
       price: raw.price !== 0 ? present(raw.price) : absent,
       // Decision C: search results never carry a real image — hard rule, no heuristic.
@@ -118,7 +133,7 @@ export function normalizeGetProductResult(raw: Product, rawText?: string): Norma
   return buildProduct(
     raw,
     {
-      name: raw.name ? present(raw.name) : absent,
+      name: raw.name ? present(sanitizeProductName(raw.name)) : absent,
       price: raw.price !== 0 ? present(raw.price) : absent,
       image_url: raw.image_url ? present(raw.image_url) : absent,
       product_url: productUrl !== null ? present(productUrl) : absent,
