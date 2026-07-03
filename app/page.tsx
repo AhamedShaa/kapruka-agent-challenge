@@ -12,6 +12,7 @@ import TypingIndicator from '@/components/chat/TypingIndicator.js';
 import RenderEventView from '@/components/chat/RenderEventView.js';
 import ProductDetailDrawer from '@/components/products/ProductDetailDrawer.js';
 import CartDrawer from '@/components/cart/CartDrawer.js';
+import { computeIncrementalPlan } from '@/lib/displayPlan.js';
 
 interface Message {
   id: string;
@@ -341,41 +342,49 @@ export default function Home(): React.JSX.Element {
             </div>
           )}
 
-          {messages.map((msg) =>
-            msg.role === 'user' ? (
-              <div key={msg.id} className="flex justify-end">
-                <div className="bg-gray-100 rounded-2xl px-4 py-2 text-sm text-gray-900 max-w-[80%] whitespace-pre-wrap">
-                  {msg.content}
+          {messages.map((msg) => {
+            if (msg.role === 'user') {
+              return (
+                <div key={msg.id} className="flex justify-end">
+                  <div className="bg-gray-100 rounded-2xl px-4 py-2 text-sm text-gray-900 max-w-[80%] whitespace-pre-wrap">
+                    {msg.content}
+                  </div>
                 </div>
-              </div>
-            ) : (
+              );
+            }
+
+            // Recomputed fresh on every render from the current (possibly
+            // partial) content — see computeIncrementalPlan's docstring for
+            // the monotonicity guarantee this relies on while streaming.
+            const plan = computeIncrementalPlan(msg.content, msg.renderEvents ?? [], !!msg.isStreaming);
+
+            return (
               <div key={msg.id} className="flex flex-col">
                 {msg.isStreaming && !msg.content && !msg.renderEvents?.length ? (
                   <TypingIndicator />
                 ) : (
-                  <>
-                    {msg.content && (
-                      <div className="text-sm leading-relaxed text-gray-800">
+                  plan.map((segment, i) =>
+                    segment.kind === 'text' ? (
+                      <div key={i} className="text-sm leading-relaxed text-gray-800">
                         <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                          {msg.content}
+                          {segment.content}
                         </ReactMarkdown>
                       </div>
-                    )}
-                    {msg.renderEvents?.map((ev, i) => (
+                    ) : (
                       <RenderEventView
                         key={i}
-                        event={ev}
+                        event={segment.event}
                         isStreaming={msg.isStreaming}
                         onAddToCart={handleAddToCart}
                         onViewDetail={handleViewDetail}
                         onSendMessage={(t) => { sendMessage(t).catch(() => null); }}
                       />
-                    ))}
-                  </>
+                    ),
+                  )
                 )}
               </div>
-            ),
-          )}
+            );
+          })}
 
           <div ref={bottomRef} />
         </div>

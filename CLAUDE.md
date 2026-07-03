@@ -4,6 +4,11 @@
 > Every decision documented here has a reason. Do not deviate without understanding why.
 
 ---
+BEFORE MAKING ANY CHANGE TO ADAPTER, NORMALIZER, TOOL, OR VENDOR PATCH 
+CODE, READ docs/AGENT_BRIEFING.md. It contains empirically-verified facts 
+about the live Kapruka API that override mock schemas, tool descriptions, 
+and vendor documentation. Do not propose fixes that contradict the 
+briefing without providing new empirical evidence.
 
 ## What We Are Building
 
@@ -186,22 +191,6 @@ different copies of `@langchain/core`, so cross-package `instanceof` checks retu
 
 ---
 ---
-## Delivery Cities Reference
-
-| Code | City | Fee | Days | Perishable OK? |
-|---|---|---|---|---|
-| COL | Colombo 1–15 | FREE | 0 | ✅ |
-| DEH | Dehiwala/Mt Lavinia | LKR 150 | 1 | ✅ |
-| KAN | Kandy | LKR 350 | 2 | ✅ |
-| GAL | Galle | LKR 400 | 2 | ✅ |
-| JAF | Jaffna | LKR 650 | 3 | ❌ |
-| TRI | Trincomalee | LKR 550 | 3 | ❌ |
-| BAT | Batticaloa | LKR 550 | 3 | ❌ |
-| VAN | Vavuniya | LKR 600 | 3 | ❌ |
-| POL | Polonnaruwa | LKR 450 | 3 | ❌ |
-
-Perishables = cakes, flowers, fruits. Cannot deliver to 3-day cities.
-Electronics/appliances = +1 day for security handling.
 ## Phase Build Log
 Update this section after each phase is complete.
 

@@ -35,9 +35,11 @@ function formatPrice(price: number | null): string {
 
 /**
  * Shared by searchProducts and showMoreResults — hydrates real CDN image URLs
- * for the first 5 results (see the cap-rationale comment at its call sites),
- * emits the carousel, and builds the full-set (not just top-3) name/price
- * summary the LLM needs to discuss anything the carousel actually shows.
+ * for every result, emits the carousel, and builds the full-set (not just
+ * top-3) name/price summary the LLM needs to discuss anything the carousel
+ * actually shows. Safe to hydrate the whole set unconditionally because the
+ * result set itself is now explicitly bounded at the source (limit: 10 on
+ * the search_products call) rather than capped here after the fact.
  */
 async function hydrateAndEmitProducts(
   adapter: CommercePort,
@@ -45,15 +47,13 @@ async function hydrateAndEmitProducts(
   products: NormalizedProduct[],
   query: string,
 ): Promise<{ readyProducts: NormalizedProduct[]; summary: string }> {
-  const toHydrate = products.slice(0, 5);
   const hydrateResults = await Promise.allSettled(
-    toHydrate.map((p) => adapter.getProduct(p.id)),
+    products.map((p) => adapter.getProduct(p.id)),
   );
-  const withImages = toHydrate.map((p, i) => {
+  const readyProducts = products.map((p, i) => {
     const r = hydrateResults[i];
     return r.status === 'fulfilled' ? { ...p, image_url: r.value.image_url } : p;
   });
-  const readyProducts = [...withImages, ...products.slice(5)];
 
   emitter.emitRender({
     type: 'PRODUCT_LIST',
@@ -176,7 +176,7 @@ export function createTools(
         'searchProducts',
         emitter,
         async () => {
-          const result = await adapter.search(q, category, { min_price, max_price, in_stock_only, sort });
+          const result = await adapter.search(q, category, { min_price, max_price, in_stock_only, sort, limit: 10 });
           const products = dedup(result.products);
           const context: LastSearchContext = {
             q,
@@ -247,6 +247,7 @@ export function createTools(
               max_price: lastSearchContext.max_price,
               in_stock_only: lastSearchContext.in_stock_only,
               sort: lastSearchContext.sort,
+              limit: 10,
             },
             lastSearchContext.cursor,
           );

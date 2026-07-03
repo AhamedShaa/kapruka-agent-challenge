@@ -110,6 +110,7 @@ export interface SearchFilters {
   // never a real accepted value; the server's own Pydantic error lists the
   // true set: bestseller, newest, price_asc, price_desc, relevance.
   sort?: 'bestseller' | 'newest' | 'price_asc' | 'price_desc' | 'relevance';
+  limit?: number;
 }
 
 /**

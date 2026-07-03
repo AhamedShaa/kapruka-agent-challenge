@@ -336,6 +336,7 @@ export class KaprukaAdapter implements CommercePort {
     if (filters?.max_price !== undefined) args.max_price = filters.max_price;
     if (filters?.in_stock_only !== undefined) args.in_stock_only = filters.in_stock_only;
     if (filters?.sort !== undefined) args.sort = filters.sort;
+    if (filters?.limit !== undefined) args.limit = filters.limit;
     if (cursor !== undefined) args.cursor = cursor;
 
     const filtersWereSent =

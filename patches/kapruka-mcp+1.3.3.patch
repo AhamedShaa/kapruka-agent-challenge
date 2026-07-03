@@ -1,5 +1,5 @@
 diff --git a/node_modules/kapruka-mcp/dist/local/server.js b/node_modules/kapruka-mcp/dist/local/server.js
-index 0685160..c5f3ab1 100644
+index 0685160..fec57ba 100644
 --- a/node_modules/kapruka-mcp/dist/local/server.js
 +++ b/node_modules/kapruka-mcp/dist/local/server.js
 @@ -93,7 +93,7 @@ const CreateOrderSchema = {
@@ -16,19 +16,19 @@ index 0685160..c5f3ab1 100644
  Examples: query="birthday cake", category="cakes"; query="red roses", category="flowers"`,
              inputSchema: SearchSchema,
 -        }, async ({ q, category }) => {
-+        }, async ({ q, category, min_price, max_price, in_stock_only, sort, cursor }) => {
++        }, async ({ q, category, min_price, max_price, in_stock_only, sort, cursor, limit }) => {
              const rateLimitError = this.rateLimiter.check();
              if (rateLimitError)
                  return this.errorContent(TOOL_NAMES.search_products, rateLimitError);
 -            this.events.toolCall(TOOL_NAMES.search_products, { q, category });
 -            this.recordAction(TOOL_NAMES.search_products, { q, category });
-+            this.events.toolCall(TOOL_NAMES.search_products, { q, category, min_price, max_price, in_stock_only, sort, cursor });
-+            this.recordAction(TOOL_NAMES.search_products, { q, category, min_price, max_price, in_stock_only, sort, cursor });
++            this.events.toolCall(TOOL_NAMES.search_products, { q, category, min_price, max_price, in_stock_only, sort, cursor, limit });
++            this.recordAction(TOOL_NAMES.search_products, { q, category, min_price, max_price, in_stock_only, sort, cursor, limit });
              if (category)
                  this.context.lastSearchedCategory = category;
              this.context.searchHistory.push(q);
 -            const cacheKey = `search:${q}:${category ?? ''}`;
-+            const cacheKey = `search:${q}:${category ?? ''}:${min_price ?? ''}:${max_price ?? ''}:${in_stock_only ?? ''}:${sort ?? ''}:${cursor ?? ''}`;
++            const cacheKey = `search:${q}:${category ?? ''}:${min_price ?? ''}:${max_price ?? ''}:${in_stock_only ?? ''}:${sort ?? ''}:${cursor ?? ''}:${limit ?? ''}`;
              const cached = this.cacheGet(cacheKey);
              if (cached)
                  return this.textContent(cached);
@@ -36,7 +36,7 @@ index 0685160..c5f3ab1 100644
                  const result = this.useMock
                      ? mockSearchProducts(q, category)
 -                    : await this.sdk.searchProducts(q, category);
-+                    : await this.sdk.searchProducts(q, category, { min_price, max_price, in_stock_only, sort, cursor });
++                    : await this.sdk.searchProducts(q, category, { min_price, max_price, in_stock_only, sort, cursor, limit });
                  const response = JSON.stringify({
                      products: result.products,
                      total: result.total,
@@ -173,10 +173,10 @@ index 0685160..c5f3ab1 100644
              catch (err) {
                  const error = err instanceof Error ? err : new Error(String(err));
 diff --git a/node_modules/kapruka-mcp/dist/sdk/client.d.ts b/node_modules/kapruka-mcp/dist/sdk/client.d.ts
-index d588de9..cf0ce49 100644
+index d588de9..b613295 100644
 --- a/node_modules/kapruka-mcp/dist/sdk/client.d.ts
 +++ b/node_modules/kapruka-mcp/dist/sdk/client.d.ts
-@@ -11,7 +11,12 @@ export declare class KaprukaSDK {
+@@ -11,7 +11,13 @@ export declare class KaprukaSDK {
      private callToolRaw;
      private callTool;
      private callToolAutoParse;
@@ -186,6 +186,7 @@ index d588de9..cf0ce49 100644
 +        max_price?: number;
 +        in_stock_only?: boolean;
 +        sort?: string;
++        limit?: number;
 +    }): Promise<SearchResult>;
      getProduct(product_id: string): Promise<Product>;
      addToCart(productId: string, name: string, price: number, quantity?: number): Promise<{
