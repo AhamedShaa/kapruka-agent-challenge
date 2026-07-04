@@ -7,12 +7,37 @@ import path from 'node:path';
  * hardcoded './kapruka-*.db' paths. On Render, set DB_DIR to the persistent
  * disk's mount path (e.g. /var/data) so the files survive redeploys instead
  * of living in the ephemeral container filesystem.
+ *
+ * Resolution and directory creation are deferred to first actual use (not
+ * run at module import time): Next's build-time page-data-collection step
+ * evaluates route modules in a bundled context where process.cwd() can
+ * resolve to an empty string, and an eager top-level mkdirSync('') crashes
+ * the build even though no request is ever actually served.
  */
-const DB_DIR = process.env.DB_DIR ?? process.cwd();
-
-if (!fs.existsSync(DB_DIR)) {
-  fs.mkdirSync(DB_DIR, { recursive: true });
+function ensureDir(dir: string): void {
+  if (!dir) return;
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 }
 
-export const CART_DB_PATH = path.join(DB_DIR, 'kapruka-cart.db');
-export const MEMORY_DB_PATH = path.join(DB_DIR, 'kapruka-memory.db');
+let cartDbPath: string | null = null;
+let memoryDbPath: string | null = null;
+
+export function getCartDbPath(): string {
+  if (cartDbPath === null) {
+    const dbDir = process.env.DB_DIR ?? process.cwd();
+    ensureDir(dbDir);
+    cartDbPath = path.join(dbDir, 'kapruka-cart.db');
+  }
+  return cartDbPath;
+}
+
+export function getMemoryDbPath(): string {
+  if (memoryDbPath === null) {
+    const dbDir = process.env.DB_DIR ?? process.cwd();
+    ensureDir(dbDir);
+    memoryDbPath = path.join(dbDir, 'kapruka-memory.db');
+  }
+  return memoryDbPath;
+}
