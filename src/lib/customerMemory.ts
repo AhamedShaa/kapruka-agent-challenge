@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import type { Database as DatabaseType } from 'better-sqlite3';
+import { MEMORY_DB_PATH } from '@/lib/db-paths.js';
 
 interface MemoryRow {
   key: string;
@@ -143,7 +144,7 @@ let _store: CustomerMemoryStore | null = null;
 
 export async function getMemoryStore(): Promise<CustomerMemoryStore> {
   if (!_store) {
-    _store = await CustomerMemoryStore.create();
+    _store = await CustomerMemoryStore.create(MEMORY_DB_PATH);
   }
   return _store;
 }

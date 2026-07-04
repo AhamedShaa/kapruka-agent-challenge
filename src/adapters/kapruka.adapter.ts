@@ -41,6 +41,7 @@ import { normalizeDateToISO, InvalidDateError } from './normalizers/dateNormaliz
 import { resolveCityForDelivery } from './cityForDelivery.js';
 import { resolveSearchOutcome } from './searchRelaxation.js';
 import { logger } from '@/lib/logger.js';
+import { CART_DB_PATH } from '@/lib/db-paths.js';
 
 export type CommerceMode = 'mock' | 'live';
 
@@ -163,7 +164,7 @@ export class KaprukaAdapter implements CommercePort {
   }
 
   static async create(mode: CommerceMode): Promise<KaprukaAdapter> {
-    const storage = mode === 'live' ? await SqliteStorage.create('./kapruka-cart.db') : new MemoryStorage();
+    const storage = mode === 'live' ? await SqliteStorage.create(CART_DB_PATH) : new MemoryStorage();
 
     const local = new KaprukaLocal({
       mock: mode === 'mock',
