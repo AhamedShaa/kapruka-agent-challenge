@@ -15,6 +15,8 @@ import TopBar from '@/components/layout/TopBar.js';
 import Sidebar from '@/components/layout/Sidebar.js';
 import ProductDetailDrawer from '@/components/products/ProductDetailDrawer.js';
 import CartDrawer from '@/components/cart/CartDrawer.js';
+import BuyNowModal from '@/components/checkout/BuyNowModal.js';
+import type { BuyNowFormValues } from '@/components/checkout/BuyNowModal.js';
 import { computeIncrementalPlan } from '@/lib/displayPlan.js';
 
 interface Message {
@@ -70,6 +72,9 @@ export default function Home(): React.JSX.Element {
   const [browserId, setBrowserId] = useState('');
   const [sessionId, setSessionId] = useState('');
   const [isHydrating, setIsHydrating] = useState(true);
+  const [buyNowTarget, setBuyNowTarget] = useState<{ product: UIProduct; qty: number } | null>(null);
+  const [buyNowPrefill, setBuyNowPrefill] = useState<{ recipientName?: string; recipientCity?: string }>({});
+  const [buyNowSubmitting, setBuyNowSubmitting] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   // Client-side map of productId → image_url. The server cart never carries
   // images, so we maintain this ref and enrich cart items before rendering.
@@ -357,16 +362,70 @@ export default function Home(): React.JSX.Element {
 
   function checkoutSingleItem(product: UIProduct, qty: number): void {
     if (product.image_url) imageMapRef.current[product.id] = product.image_url;
-    const msg =
-      `Buy now: I want to purchase exactly ${qty}× ${product.name} (ID: ${product.id}) ` +
-      `for LKR ${product.price.toLocaleString()} each. ` +
-      `Please clear my cart, add only this item with quantity ${qty}, ` +
-      `then guide me through checkout.`;
-    sendMessage(msg).catch(() => null);
+
+    // Phase 1: ask the server for memory-based prefill. No cart touched.
+    fetch('/api/buy-now', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId: product.id, quantity: qty, browserId }),
+    })
+      .then((r) => r.json())
+      .then((data: { ok: boolean; needsDetails?: boolean; prefill?: { recipientName?: string; recipientCity?: string } }) => {
+        setBuyNowPrefill(data.prefill ?? {});
+        setBuyNowTarget({ product, qty });
+      })
+      .catch(() => null);
   }
 
   function handleBuyNow(product: UIProduct, qty = 1): void {
     checkoutSingleItem(product, qty);
+  }
+
+  function handleBuyNowSubmit(values: BuyNowFormValues): void {
+    if (!buyNowTarget) return;
+    const { product, qty } = buyNowTarget;
+    setBuyNowSubmitting(true);
+
+    fetch('/api/buy-now', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productId: product.id,
+        quantity: qty,
+        browserId,
+        checkout: values,
+      }),
+    })
+      .then((r) => r.json())
+      .then((data: { ok: boolean; order?: { id: string | null; checkoutUrl: string | null; total: number | null; expiresAt: string | null }; error?: string }) => {
+        if (data.ok && data.order) {
+          setBuyNowTarget(null);
+          // Inject a CHECKOUT_LINK render event as a new assistant message
+          // without involving the LLM or touching the cart.
+          const msgId = uuid();
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: msgId,
+              role: 'assistant',
+              content: '',
+              isStreaming: false,
+              renderEvents: [
+                {
+                  type: 'CHECKOUT_LINK' as const,
+                  checkoutUrl: data.order!.checkoutUrl ?? '#',
+                  orderId: data.order!.id ?? 'unknown',
+                  total: data.order!.total ?? product.price * qty,
+                  expiresAt: data.order!.expiresAt ?? new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+                },
+              ],
+            },
+          ]);
+        }
+        // On error we leave the modal open so the user can retry or close.
+      })
+      .catch(() => null)
+      .finally(() => setBuyNowSubmitting(false));
   }
 
   function handleViewDetail(product: UIProduct): void {
@@ -521,6 +580,14 @@ export default function Home(): React.JSX.Element {
         onCheckout={() => setIsCartOpen(false)}
         onQuantityChange={handleQuantityChange}
         onRemove={handleRemoveFromCart}
+      />
+      <BuyNowModal
+        isOpen={buyNowTarget !== null}
+        productName={buyNowTarget?.product.name ?? ''}
+        prefill={buyNowPrefill}
+        isSubmitting={buyNowSubmitting}
+        onSubmit={handleBuyNowSubmit}
+        onClose={() => setBuyNowTarget(null)}
       />
     </div>
   );
