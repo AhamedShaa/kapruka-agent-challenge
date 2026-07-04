@@ -82,6 +82,7 @@ export default function Home(): React.JSX.Element {
   const [cartItems, setCartItems] = useState<UICartItem[]>([]);
   const [cartTotal, setCartTotal] = useState(0);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [cartPending, setCartPending] = useState(false);
   // Language is autodetected by the system prompt; locale is fixed for API calls
   const locale = 'en';
   const [selectedProduct, setSelectedProduct] = useState<UIProduct | null>(null);
@@ -227,6 +228,7 @@ export default function Home(): React.JSX.Element {
       if (frame.type === 'token' && !activeReactiveMsgId) {
         const id = uuid();
         activeReactiveMsgId = id;
+        setCartPending(false);
         setMessages((prev) => [...prev, { id, role: 'assistant', content: '', isStreaming: true }]);
       }
 
@@ -367,11 +369,13 @@ export default function Home(): React.JSX.Element {
       handleRemoveFromCart(productId);
       return;
     }
+    setCartPending(true);
     const optimisticItems = cartItems.map((i) => (i.productId === productId ? { ...i, quantity: newQuantity } : i));
     mutateCartDirect('updateQuantity', productId, optimisticItems, newQuantity);
   }
 
   function handleRemoveFromCart(productId: string): void {
+    setCartPending(true);
     const optimisticItems = cartItems.filter((i) => i.productId !== productId);
     mutateCartDirect('remove', productId, optimisticItems);
   }
@@ -585,6 +589,14 @@ export default function Home(): React.JSX.Element {
         style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0.75rem))' }}
       >
         <div className="max-w-2xl mx-auto w-full">
+          {cartPending && (
+            <div className="flex items-center gap-2 mb-2 px-1">
+              <span className="inline-flex items-center gap-1.5 text-xs text-purple-600 dark:text-[#B49FDD]">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 dark:bg-[#B49FDD] animate-pulse" />
+                Updating your cart…
+              </span>
+            </div>
+          )}
           <ChatInput onSend={(t) => { sendMessage(t).catch(() => null); }} disabled={isLoading || isHydrating} />
         </div>
       </footer>
