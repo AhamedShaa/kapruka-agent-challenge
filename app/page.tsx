@@ -41,6 +41,22 @@ function uuid(): string {
   return crypto.randomUUID();
 }
 
+// Strip product listing lines from text when product cards are already shown.
+// Operates line-by-line; collapses resulting multi-blank-lines; returns empty
+// string if nothing survives (caller skips the bubble entirely).
+const PRICE_NUMBERED = /^\s*\d+[\.\)]\s+.*(?:LKR|Rs\.?)\s*[\d,]+/i;
+const PRICE_BULLET   = /^\s*[-*]\s+.*(?:LKR|Rs\.?)\s*[\d,]+/i;
+const PRICE_DASH     = /^.{3,80}\s*[—\-–]\s*(?:LKR|Rs\.?)\s*[\d,]+/i;
+
+function sanitizeProductText(text: string): string {
+  const filtered = text.split('\n').filter((line) => {
+    const t = line.trim();
+    if (!t) return true;
+    return !PRICE_NUMBERED.test(t) && !PRICE_BULLET.test(t) && !PRICE_DASH.test(t);
+  });
+  return filtered.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 // Forces every markdown link (product URLs, checkout links the assistant
 // might reference) to open in a new tab — same-tab navigation would abandon
 // the user's cart/conversation mid-chat.
@@ -522,14 +538,25 @@ export default function Home(): React.JSX.Element {
                     <TypingIndicator />
                   </AgentMessage>
                 ) : (
-                  plan.map((segment, i) =>
-                    segment.kind === 'text' ? (
-                      <AgentMessage key={i} showAvatar={isFirstAgentInRun && i === 0}>
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                          {segment.content}
-                        </ReactMarkdown>
-                      </AgentMessage>
-                    ) : (
+                  plan.map((segment, i) => {
+                    if (segment.kind === 'text') {
+                      const hasLiveProductEvents = (msg.renderEvents ?? []).some(
+                        (e) => e.type === 'PRODUCT_LIST' || e.type === 'PRODUCT_DETAIL',
+                      );
+                      if (hasLiveProductEvents && msg.isStreaming) return null;
+                      const displayText = msg.role === 'assistant'
+                        ? sanitizeProductText(segment.content)
+                        : segment.content;
+                      if (!displayText) return null;
+                      return (
+                        <AgentMessage key={i} showAvatar={isFirstAgentInRun && i === 0}>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                            {displayText}
+                          </ReactMarkdown>
+                        </AgentMessage>
+                      );
+                    }
+                    return (
                       /* Render events indent past the avatar (w-7 + gap-2 = 36px) */
                       <div key={i} className="pl-9">
                         <RenderEventView
@@ -541,8 +568,8 @@ export default function Home(): React.JSX.Element {
                           onSendMessage={(t) => { sendMessage(t).catch(() => null); }}
                         />
                       </div>
-                    ),
-                  )
+                    );
+                  })
                 )}
               </div>
             );
