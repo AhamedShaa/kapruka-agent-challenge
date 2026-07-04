@@ -1,10 +1,15 @@
 import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTs from "eslint-config-next/typescript";
+import { FlatCompat } from "@eslint/eslintrc";
+
+// eslint-config-next's subpath exports (core-web-vitals.js, typescript.js)
+// are still legacy eslintrc-shaped shareable configs (`{ extends: [...] }`),
+// not flat-config arrays, so they can't be imported and spread directly into
+// a flat config. FlatCompat bridges the legacy "extends" shape into flat
+// config the same way `next/core-web-vitals` works in eslintrc-based setups.
+const compat = new FlatCompat({ baseDirectory: import.meta.dirname });
 
 const eslintConfig = defineConfig([
-  ...nextVitals,
-  ...nextTs,
+  ...compat.extends("next/core-web-vitals", "next/typescript"),
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
@@ -12,6 +17,7 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "scripts/**",
   ]),
 ]);
 
