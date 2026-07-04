@@ -130,6 +130,28 @@ function makeInvalidDateResponse(
   };
 }
 
+function makeAmbiguousCityResponse(
+  userCity: string,
+  resolution: import('./cityForDelivery.js').CityResolution,
+): NormalizedDeliveryCheckWithContext & { note: string } {
+  return {
+    city: null,
+    availability: 'unknown',
+    nextAvailableDate: null,
+    fee: null,
+    note: '',
+    resolutionContext: {
+      requestedCity: userCity,
+      resolvedAs: resolution.suggestedDefault ?? null,
+      ambiguous: true,
+      alternateNames: resolution.alternateNames,
+      reason: 'ambiguous-defaulted',
+      requestedDate: null,
+      resolvedDate: null,
+    },
+  };
+}
+
 function makeUnknownCityResponse(userCity: string): NormalizedDeliveryCheckWithContext & { note: string } {
   return {
     city: null,
@@ -458,6 +480,9 @@ export class KaprukaAdapter implements CommercePort {
     const resolution = await resolveCityForDelivery(city, this);
 
     if (!resolution.resolvedName) {
+      if (resolution.reason === 'ambiguous-defaulted') {
+        return makeAmbiguousCityResponse(city, resolution);
+      }
       return makeUnknownCityResponse(city);
     }
 

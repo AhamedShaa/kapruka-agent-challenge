@@ -348,6 +348,17 @@ export function createTools(
         emitter,
         async () => {
           const quote = await adapter.checkDelivery(city, productId, date);
+          const ctx = quote.resolutionContext;
+
+          if (ctx?.reason === 'ambiguous-defaulted') {
+            const candidates = ctx.alternateNames.join(', ');
+            const suggested = ctx.resolvedAs ?? 'Colombo 03';
+            return [
+              `Multiple zones match '${city}' — ${candidates}. Shall I check delivery for ${suggested}, or did you mean a different zone?`,
+              { resolutionContext: ctx },
+            ];
+          }
+
           const uiQuote = normalizedToUIDeliveryQuote(quote);
           emitter.emitRender({ type: 'DELIVERY_QUOTE', ...uiQuote });
 
@@ -355,7 +366,7 @@ export function createTools(
             ? `Delivery to ${uiQuote.city}: ${uiQuote.fee === 0 ? 'FREE' : `LKR ${uiQuote.fee}`}.`
             : `Cannot deliver to ${uiQuote.city}. ${uiQuote.note}. Suggest an alternative city.`;
 
-          return [narration, { resolutionContext: quote.resolutionContext ?? null }];
+          return [narration, { resolutionContext: ctx ?? null }];
         },
         { resolutionContext: null },
       ),

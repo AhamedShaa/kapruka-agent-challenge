@@ -6,6 +6,8 @@ export interface CityResolution {
   ambiguous: boolean;
   alternateNames: string[];
   reason: 'exact' | 'vernacular' | 'ambiguous-defaulted' | 'unknown';
+  /** Populated only when reason === 'ambiguous-defaulted'. */
+  suggestedDefault?: string;
 }
 
 function unknownResolution(): CityResolution {
@@ -40,14 +42,15 @@ export async function resolveCityForDelivery(
   }
 
   const allColombo = cities.every((city) => city.name.startsWith('Colombo '));
-  const defaultName = allColombo && cities.some((city) => city.name === 'Colombo 03')
+  const suggestedDefault = allColombo && cities.some((city) => city.name === 'Colombo 03')
     ? 'Colombo 03'
     : cities[0].name;
 
   return {
-    resolvedName: defaultName,
+    resolvedName: null,
     ambiguous: true,
-    alternateNames: cities.map((city) => city.name).filter((name) => name !== defaultName),
+    alternateNames: cities.map((city) => city.name),
     reason: 'ambiguous-defaulted',
+    suggestedDefault,
   };
 }
