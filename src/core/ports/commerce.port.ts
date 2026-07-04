@@ -111,6 +111,9 @@ export interface SearchFilters {
   // true set: bestseller, newest, price_asc, price_desc, relevance.
   sort?: 'bestseller' | 'newest' | 'price_asc' | 'price_desc' | 'relevance';
   limit?: number;
+  /** Client-side vendor filter — server has no vendor param. The adapter fetches
+   *  a wider batch, hydrates to get vendor info, then filters by substring match. */
+  vendor?: string;
 }
 
 /**

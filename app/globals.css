@@ -1,8 +1,119 @@
 @import "tailwindcss";
 
+/* Class-based dark mode — .dark on <html> via next-themes */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Font wiring (CSS vars injected at runtime by next/font) ── */
 @theme inline {
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-geist-sans);   /* existing default — unchanged this phase */
   --font-mono: var(--font-geist-mono);
+  --font-ui:   var(--font-inter);        /* Inter — prices, labels, nav */
+  --font-body: var(--font-roboto);       /* Roboto — chat text, descriptions */
+}
+
+/* ── Design token system ── */
+@theme {
+  /* Purple scale — brand anchor: purple-700 = #402970 */
+  --color-purple-50:  #f8f4ff;
+  --color-purple-100: #f0e7ff;
+  --color-purple-200: #dcc9ff;
+  --color-purple-300: #c098ff;
+  --color-purple-400: #9d64f5;
+  --color-purple-500: #7a3dd8;
+  --color-purple-600: #5e2aa8;
+  --color-purple-700: #402970;
+  --color-purple-800: #2b1a4e;
+  --color-purple-900: #180e2e;
+  --color-purple-950: #0c0618;
+
+  /* Yellow scale — brand anchor: yellow-500 = #ffb800 */
+  --color-yellow-50:  #fffbea;
+  --color-yellow-100: #fff3c0;
+  --color-yellow-200: #ffe880;
+  --color-yellow-300: #ffd940;
+  --color-yellow-400: #ffc800;
+  --color-yellow-500: #ffb800;
+  --color-yellow-600: #e09800;
+  --color-yellow-700: #b87500;
+  --color-yellow-800: #8c5400;
+  --color-yellow-900: #5c3500;
+  --color-yellow-950: #301c00;
+
+  /* Gray scale — neutral UI grays */
+  --color-gray-50:  #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+  --color-gray-950: #030712;
+
+  /* Semantic — success (Best Seller badge) */
+  --color-success-50:  #f0fdf4;
+  --color-success-500: #22c55e;
+  --color-success-700: #15803d;
+
+  /* Semantic — warning (Perishable badge) */
+  --color-warning-50:  #fff7ed;
+  --color-warning-500: #f97316;
+  --color-warning-700: #c2410c;
+
+  /* Semantic — error (Out of Stock badge, error cards) */
+  --color-error-50:  #fef2f2;
+  --color-error-500: #ef4444;
+  --color-error-700: #b91c1c;
+
+  /* Border radius */
+  --radius-sm:   0.25rem;    /* 4px  */
+  --radius-md:   0.5rem;     /* 8px  */
+  --radius-lg:   0.75rem;    /* 12px */
+  --radius-xl:   1rem;       /* 16px */
+  --radius-2xl:  1.5rem;     /* 24px */
+  --radius-full: 9999px;
+
+  /* Shadow / elevation */
+  --shadow-xs:    0 1px 2px rgb(0 0 0 / 0.05);
+  --shadow-sm:    0 1px 3px rgb(0 0 0 / 0.10), 0 1px 2px rgb(0 0 0 / 0.06);
+  --shadow-md:    0 4px 6px rgb(0 0 0 / 0.10), 0 2px 4px rgb(0 0 0 / 0.06);
+  --shadow-lg:    0 10px 15px rgb(0 0 0 / 0.10), 0 4px 6px rgb(0 0 0 / 0.05);
+  --shadow-focus: 0 0 0 3px rgb(255 184 0 / 0.45);
+}
+
+/* ── Legacy tokens — IconRail, settings, updates, subscription pages ── */
+:root {
+  --kapruka-bg: #ffffff;
+  --kapruka-surface: #ffffff;
+  --kapruka-primary: #ffb800;
+  --kapruka-primary-fg: #402970;
+  --kapruka-accent: #402970;
+  --kapruka-text: #111827;
+  --kapruka-text-muted: #6b7280;
+  --kapruka-border: #e5e7eb;
+  --kapruka-font-heading: 'Roboto', Arial, sans-serif;
+  --kapruka-font-body: 'Roboto', Arial, sans-serif;
+}
+
+/* ── Dark theme tokens (§1.6) ── */
+.dark {
+  --dark-bg-page:        #17141F;
+  --dark-bg-surface:     #201C2C;
+  --dark-bg-surface-2:   #2A2438;
+  --dark-border:         #3A3350;
+  --dark-text-primary:   #F2F0F5;
+  --dark-text-secondary: #A79FBB;
+  --dark-purple-accent:  #B49FDD;
+  --dark-yellow-accent:  #FFC940;
+
+  /* Legacy tokens used by sub-pages */
+  --kapruka-bg:         #17141F;
+  --kapruka-surface:    #201C2C;
+  --kapruka-text:       #F2F0F5;
+  --kapruka-text-muted: #A79FBB;
+  --kapruka-border:     #3A3350;
 }
 
 @layer utilities {

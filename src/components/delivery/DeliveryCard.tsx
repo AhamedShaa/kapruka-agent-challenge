@@ -1,4 +1,5 @@
-import { CheckCircle, XCircle } from 'lucide-react';
+import { Truck, AlertTriangle } from 'lucide-react';
+import ResponseCard from '@/components/ui/ResponseCard.js';
 
 interface DeliveryCardProps {
   city: string;
@@ -15,29 +16,33 @@ export default function DeliveryCard({
   etaLabel,
   note,
 }: DeliveryCardProps): React.JSX.Element {
+  if (!available) {
+    return (
+      <ResponseCard
+        variant="error"
+        icon={<AlertTriangle className="w-4 h-4" />}
+        title={`No delivery to ${city}`}
+        rows={[
+          { label: 'Status', value: etaLabel },
+          ...(note ? [{ label: 'Note', value: note }] : []),
+        ]}
+      />
+    );
+  }
+
   return (
-    <div className="border rounded-xl p-4 max-w-xs mt-2 bg-white">
-      {available ? (
-        <div className="flex items-start gap-3">
-          <CheckCircle className="w-5 h-5 text-emerald-500 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="text-sm font-medium text-gray-900">{city}</p>
-            <p className="text-sm text-gray-600 mt-0.5">
-              {fee === 0 ? 'Free delivery' : `LKR ${fee.toLocaleString()}`} &middot; {etaLabel}
-            </p>
-            {note && <p className="text-xs text-gray-400 mt-1">{note}</p>}
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-start gap-3">
-          <XCircle className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="text-sm font-medium text-gray-900">Not available — {city}</p>
-            <p className="text-sm text-gray-600 mt-0.5">{etaLabel}</p>
-            {note && <p className="text-xs text-gray-400 mt-1">{note}</p>}
-          </div>
-        </div>
-      )}
-    </div>
+    <ResponseCard
+      icon={<Truck className="w-4 h-4" />}
+      title={`Delivery to ${city}`}
+      rows={[
+        {
+          label: 'Fee',
+          value: fee === 0 ? 'Free' : `LKR ${fee.toLocaleString()}`,
+          valueClass: fee === 0 ? 'text-success-700' : undefined,
+        },
+        { label: 'Estimated arrival', value: etaLabel },
+        ...(note ? [{ label: 'Note', value: note, valueClass: 'text-gray-500 font-normal' }] : []),
+      ]}
+    />
   );
 }

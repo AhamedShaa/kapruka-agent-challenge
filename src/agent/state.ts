@@ -1,6 +1,7 @@
 import { Annotation } from '@langchain/langgraph';
 import type { BaseMessage } from '@langchain/core/messages';
 import { z } from 'zod';
+import type { StockStatus } from '@/adapters/normalizers/types.js';
 
 export type Locale = 'en' | 'si' | 'tanglish';
 
@@ -18,7 +19,10 @@ export interface UIProduct {
   category: string;
   description: string;
   visual_description: string;
-  in_stock: boolean;
+  in_stock: StockStatus;
+  vendor?: string | null;
+  weight?: string | null;
+  international_shipping?: boolean | null;
 }
 
 export interface UICartItem {
@@ -26,6 +30,7 @@ export interface UICartItem {
   name: string;
   price: number;
   quantity: number;
+  image_url?: string | null;
 }
 
 export interface UIDeliveryQuote {
@@ -51,6 +56,12 @@ export interface LastSearchContext {
   in_stock_only?: boolean;
   sort?: 'bestseller' | 'newest' | 'price_asc' | 'price_desc' | 'relevance';
   cursor: string | null;
+  /** Client-side vendor filter applied to this search (e.g. "Pentra Holdings"). */
+  vendor?: string;
+  /** Position-to-ID map for the most recent carousel page. Lets the LLM
+   *  resolve "the third one" to a product ID for a getProduct call without
+   *  names ever appearing in the ToolMessage. */
+  productIndex?: Array<{ position: number; id: string; price: number }>;
 }
 
 /**

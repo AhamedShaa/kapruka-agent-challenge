@@ -1,5 +1,5 @@
 import type { Product } from 'kapruka-mcp';
-import type { NormalizedProduct } from './types.js';
+import type { NormalizedProduct, StockStatus } from './types.js';
 
 interface FieldResult<T> {
   value: T | null;
@@ -47,6 +47,35 @@ function extractWeight(rawText: string): string | null {
   return parseWeight(m ? m[1] : null);
 }
 
+/**
+ * Parses the **Stock** field from raw markdown. The SDK collapses
+ * "In stock (low)" to boolean true, losing the low-stock qualifier —
+ * so we must parse from rawText when available.
+ * Audit confirmed: Kapruka never emits plain "In stock"; "(low)" is always present.
+ */
+function parseStockStatus(rawText: string | undefined | null, fallbackBool: boolean): StockStatus {
+  if (rawText) {
+    const m = rawText.match(/\*\*Stock\*\*:\s*(.+)/i);
+    if (m) {
+      const s = m[1].trim().toLowerCase();
+      if (s.includes('out of stock')) return 'out_of_stock';
+      if (s.includes('(low)')) return 'low_stock';
+      if (s.includes('in stock')) return 'in_stock';
+    }
+  }
+  return fallbackBool ? 'in_stock' : 'out_of_stock';
+}
+
+function parseInternationalShipping(rawText: string | undefined | null): boolean | null {
+  if (!rawText) return null;
+  const m = rawText.match(/\*\*International shipping\*\*:\s*(.+)/i);
+  if (!m) return null;
+  const val = m[1].trim().toLowerCase();
+  if (val === 'yes' || val === 'true') return true;
+  if (val === 'no' || val === 'false') return false;
+  return null;
+}
+
 /** Single-product get_product responses have exactly one `[View on Kapruka]` link. */
 function extractProductUrlSingle(rawText: string): string | null {
   const m = rawText.match(/\[View on Kapruka\]\((https?:\/\/[^)]+)\)/);
@@ -69,7 +98,7 @@ function extractProductUrlForId(rawText: string, productId: string): string | nu
 function buildProduct(
   raw: Product,
   fields: Record<string, FieldResult<unknown>>,
-  base: { id: string; in_stock: boolean; currency: string },
+  base: { id: string; in_stock: StockStatus; currency: string; international_shipping: boolean | null },
 ): NormalizedProduct {
   return {
     id: base.id,
@@ -84,6 +113,7 @@ function buildProduct(
     vendor: fields.vendor.value as string | null,
     weight: fields.weight.value as string | null,
     in_stock: base.in_stock,
+    international_shipping: base.international_shipping,
   };
 }
 
@@ -116,7 +146,7 @@ export function normalizeSearchProduct(raw: Product, rawText?: string): Normaliz
       // Search blocks never carry a Weight label.
       weight: absent,
     },
-    { id: raw.id, in_stock: raw.in_stock, currency: 'LKR' },
+    { id: raw.id, in_stock: raw.in_stock ? 'in_stock' : 'out_of_stock', currency: 'LKR', international_shipping: null },
   );
 }
 
@@ -145,6 +175,6 @@ export function normalizeGetProductResult(raw: Product, rawText?: string): Norma
       vendor: vendor !== null ? present(vendor) : absent,
       weight: weight !== null ? present(weight) : absent,
     },
-    { id: raw.id, in_stock: raw.in_stock, currency: 'LKR' },
+    { id: raw.id, in_stock: parseStockStatus(rawText, raw.in_stock), currency: 'LKR', international_shipping: parseInternationalShipping(rawText) },
   );
 }

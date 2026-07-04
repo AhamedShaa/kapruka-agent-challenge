@@ -12,7 +12,7 @@ function makeUIProduct(id: string, name: string): UIProduct {
     category: '',
     description: '',
     visual_description: '',
-    in_stock: true,
+    in_stock: 'in_stock',
   };
 }
 

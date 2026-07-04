@@ -1,3 +1,9 @@
+/** Three-value stock enum derived from the raw **Stock** markdown field.
+ *  Audit confirmed "In stock (low)" is the API's only in-stock string —
+ *  plain "In stock" has never been observed. Both purchasable states map
+ *  to truthy for cart/checkout purposes. */
+export type StockStatus = 'in_stock' | 'low_stock' | 'out_of_stock';
+
 export interface NormalizedProduct {
   id: string;
   name: string | null;
@@ -10,7 +16,8 @@ export interface NormalizedProduct {
   visual_description: string | null;
   vendor: string | null;
   weight: string | null;
-  in_stock: boolean;
+  in_stock: StockStatus;
+  international_shipping: boolean | null;
 }
 
 export interface NormalizedCategory {
@@ -78,6 +85,7 @@ export interface NormalizedCartItem {
   price: number;
   quantity: number;
   subtotal: number;
+  image_url?: string | null;
 }
 
 export interface NormalizedCartView {

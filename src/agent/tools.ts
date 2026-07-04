@@ -46,13 +46,27 @@ async function hydrateAndEmitProducts(
   emitter: RenderEventEmitter,
   products: NormalizedProduct[],
   query: string,
-): Promise<{ readyProducts: NormalizedProduct[]; summary: string }> {
+): Promise<{
+  readyProducts: NormalizedProduct[];
+  productIndex: Array<{ position: number; id: string; price: number }>;
+}> {
   const hydrateResults = await Promise.allSettled(
     products.map((p) => adapter.getProduct(p.id)),
   );
   const readyProducts = products.map((p, i) => {
     const r = hydrateResults[i];
-    return r.status === 'fulfilled' ? { ...p, image_url: r.value.image_url } : p;
+    if (r.status !== 'fulfilled') return p;
+    // Overlay all non-null fields from getProduct onto the search result.
+    // getProduct is the authoritative source: it carries image_url, vendor,
+    // weight, description, product_url, visual_description, and the correct
+    // category (search path returns wrong category for partner-catalog items).
+    // Search-path values are kept as fallback only where getProduct returned null.
+    return {
+      ...p,
+      ...Object.fromEntries(
+        Object.entries(r.value).filter(([, v]) => v != null),
+      ),
+    } as NormalizedProduct;
   });
 
   emitter.emitRender({
@@ -61,11 +75,41 @@ async function hydrateAndEmitProducts(
     query,
   });
 
-  const summary = readyProducts
-    .map((p) => `${p.name ?? 'Unnamed item'} — ${formatPrice(p.price)} (id: ${p.id})`)
-    .join(', ');
+  const productIndex = readyProducts.map((p, i) => ({
+    position: i + 1,
+    id: p.id,
+    price: p.price ?? 0,
+  }));
 
-  return { readyProducts, summary };
+  return { readyProducts, productIndex };
+}
+
+/**
+ * Builds the hybrid ToolMessage the LLM receives after a search.
+ *
+ * Gives the LLM price-range reasoning and position references without
+ * product names — so it can discuss "the cheapest one" or "option 3"
+ * without re-narrating the carousel the user already sees.
+ * IDs are included so the LLM can call getProduct when asked for details.
+ */
+function buildCarouselToolMessage(
+  readyProducts: NormalizedProduct[],
+  query: string,
+  productIndex: Array<{ position: number; id: string; price: number }>,
+): string {
+  const prices = productIndex.map((pi) => pi.price).filter((p) => p > 0);
+  const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
+  const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
+  const inStockCount = readyProducts.filter((p) => p.in_stock !== 'out_of_stock').length;
+  const rangeStr = minPrice === maxPrice ? `LKR ${minPrice}` : `LKR ${minPrice}–${maxPrice}`;
+  const ref = productIndex
+    .map(({ position, id, price }) => `[${position}] LKR ${price} (id:${id})`)
+    .join(', ');
+  return (
+    `Found ${readyProducts.length} products for "${query}" (${rangeStr} range, ${inStockCount} in stock). ` +
+    `Displayed in carousel. Reference: ${ref}. ` +
+    `Use position numbers to discuss specific products with the customer.`
+  );
 }
 
 /** Friendly labels for the TOOL_ACTIVITY event — covers every tool routed
@@ -161,7 +205,9 @@ export function createTools(
       'When the user mentions a budget, pass it as min_price/max_price — do not leave the ' +
       'number embedded in q. Use in_stock_only to exclude out-of-stock items, and sort for ' +
       'bestseller/newest/price_asc/price_desc/relevance ordering. Do not pass a category ' +
-      'parameter when COMMERCE_MODE is live.',
+      'parameter when COMMERCE_MODE is live. ' +
+      'Vendor filtering IS supported: pass the vendor name in the vendor parameter (e.g. vendor: "Pentra Holdings") ' +
+      'alongside a product-type query in q (e.g. q: "electronics"). The filtering is handled transparently.',
     schema: z.object({
       q: z.string(),
       category: z.string().optional(),
@@ -169,14 +215,15 @@ export function createTools(
       max_price: z.number().optional(),
       in_stock_only: z.boolean().optional(),
       sort: z.enum(['bestseller', 'newest', 'price_asc', 'price_desc', 'relevance']).optional(),
+      vendor: z.string().optional(),
     }),
     responseFormat: 'content_and_artifact',
-    func: async ({ q, category, min_price, max_price, in_stock_only, sort }) =>
+    func: async ({ q, category, min_price, max_price, in_stock_only, sort, vendor }) =>
       runToolWithArtifact<LastSearchContext | null>(
         'searchProducts',
         emitter,
         async () => {
-          const result = await adapter.search(q, category, { min_price, max_price, in_stock_only, sort, limit: 10 });
+          const result = await adapter.search(q, category, { min_price, max_price, in_stock_only, sort, limit: 10, vendor });
           const products = dedup(result.products);
           const context: LastSearchContext = {
             q,
@@ -185,6 +232,7 @@ export function createTools(
             ...(max_price !== undefined ? { max_price } : {}),
             ...(in_stock_only !== undefined ? { in_stock_only } : {}),
             ...(sort !== undefined ? { sort } : {}),
+            ...(vendor !== undefined ? { vendor } : {}),
             cursor: result.cursor,
           };
 
@@ -205,15 +253,9 @@ export function createTools(
             ];
           }
 
-          // Full set, not just the top few — the carousel shows every item
-          // returned, so the LLM needs all of them nameable/priceable too
-          // (e.g. "what about the 5th one"), not just the first 3.
-          const { readyProducts, summary } = await hydrateAndEmitProducts(adapter, emitter, products, q);
-          const priceNote = max_price !== undefined ? ` (filtered to under LKR ${max_price})` : '';
-          return [
-            `Found ${readyProducts.length} results for "${q}"${priceNote}: ${summary}. Ask which one they'd like or offer to check delivery.`,
-            context,
-          ];
+          const { readyProducts, productIndex } = await hydrateAndEmitProducts(adapter, emitter, products, q);
+          const contextWithIndex: LastSearchContext = { ...context, productIndex };
+          return [buildCarouselToolMessage(readyProducts, q, productIndex), contextWithIndex];
         },
         null,
       ),
@@ -247,6 +289,7 @@ export function createTools(
               max_price: lastSearchContext.max_price,
               in_stock_only: lastSearchContext.in_stock_only,
               sort: lastSearchContext.sort,
+              vendor: lastSearchContext.vendor,
               limit: 10,
             },
             lastSearchContext.cursor,
@@ -259,11 +302,9 @@ export function createTools(
             return [`No more results for "${lastSearchContext.q}".`, nextContext];
           }
 
-          const { readyProducts, summary } = await hydrateAndEmitProducts(adapter, emitter, products, lastSearchContext.q);
-          return [
-            `Here are ${readyProducts.length} more results for "${lastSearchContext.q}": ${summary}. Ask which one they'd like or offer to check delivery.`,
-            nextContext,
-          ];
+          const { readyProducts, productIndex } = await hydrateAndEmitProducts(adapter, emitter, products, lastSearchContext.q);
+          const nextContextWithIndex: LastSearchContext = { ...nextContext, productIndex };
+          return [buildCarouselToolMessage(readyProducts, lastSearchContext.q, productIndex), nextContextWithIndex];
         },
         lastSearchContext,
       ),
@@ -284,7 +325,7 @@ export function createTools(
         const vendorPart = product.vendor ? ` Vendor: ${product.vendor}.` : '';
         const weightPart = product.weight ? ` Weight: ${product.weight}.` : '';
         const urlPart = product.product_url ? ` View more details [here](${product.product_url}).` : '';
-        return `${product.name ?? 'Unnamed item'} — ${formatPrice(product.price)}. ${description}In stock: ${product.in_stock ? 'yes' : 'no'}.${vendorPart}${weightPart}${urlPart}`;
+        return `${product.name ?? 'Unnamed item'} — ${formatPrice(product.price)}. ${description}In stock: ${product.in_stock !== 'out_of_stock' ? 'yes' : 'no'}${product.in_stock === 'low_stock' ? ' (low)' : ''}.${vendorPart}${weightPart}${urlPart}`;
       }),
   });
 

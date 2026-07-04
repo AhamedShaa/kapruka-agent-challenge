@@ -21,16 +21,20 @@ export function normalizedToUIProduct(p: NormalizedProduct): UIProduct {
     description: p.description ?? '',
     visual_description: p.visual_description ?? '',
     in_stock: p.in_stock,
+    vendor: p.vendor ?? null,
+    weight: p.weight ?? null,
+    international_shipping: p.international_shipping,
   };
 }
 
-/** NormalizedCartItem has no nullable fields — this is a straight field copy, dropping `subtotal`. */
+/** NormalizedCartItem has no nullable fields — straight field copy dropping `subtotal`. image_url is optional and client-enriched. */
 export function normalizedToUICartItem(item: NormalizedCartItem): UICartItem {
   return {
     productId: item.productId,
     name: item.name,
     price: item.price,
     quantity: item.quantity,
+    image_url: item.image_url ?? null,
   };
 }
 

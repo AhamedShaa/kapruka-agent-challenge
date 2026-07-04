@@ -5,7 +5,15 @@
       "Bash(curl *)",
       "Bash(iconv -f utf-16 -t utf-8 \"E:/Kapruka/dev-final.log\")",
       "Bash(taskkill //F //IM node.exe //T)",
-      "Bash(rm -f \"E:/Kapruka/dev-final.log\" \"E:/Kapruka/kapruka-cart.db\" \"E:/Kapruka/kapruka-cart.db-journal\")"
+      "Bash(rm -f \"E:/Kapruka/dev-final.log\" \"E:/Kapruka/kapruka-cart.db\" \"E:/Kapruka/kapruka-cart.db-journal\")",
+      "PowerShell(\\(Get-Item E:\\\\Kapruka\\\\docs\\\\design-system.md\\).Length)",
+      "PowerShell(Get-ChildItem E:\\\\Kapruka\\\\src\\\\components -Recurse | Select-Object FullName | ForEach-Object { $_.FullName.Replace\\('E:\\\\Kapruka\\\\src\\\\components\\\\', ''\\) })",
+      "PowerShell(npx tsc --noEmit 2>&1)",
+      "PowerShell(netstat -ano)",
+      "PowerShell(head -5)",
+      "Bash(npx tsx *)",
+      "Bash(npx tsc *)",
+      "Bash(Select-String -NotMatch \"^\\\\[2\")"
     ]
   }
 }

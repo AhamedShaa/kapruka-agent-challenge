@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { matchesLocalFilters, resolveSearchOutcome, tokenBoostRerank } from '../searchRelaxation.js';
 import type { NormalizedProduct, NormalizedSearchResult } from '@/core/ports/commerce.port.js';
 
-function makeProduct(id: string, name: string, price: number, in_stock = true): NormalizedProduct {
+function makeProduct(id: string, name: string, price: number, in_stock: import('@/adapters/normalizers/types.js').StockStatus = 'in_stock'): NormalizedProduct {
   return {
     id,
     name,
@@ -16,6 +16,7 @@ function makeProduct(id: string, name: string, price: number, in_stock = true): 
     vendor: null,
     weight: null,
     in_stock,
+    international_shipping: null,
   };
 }
 
@@ -90,8 +91,8 @@ describe('matchesLocalFilters', () => {
   });
 
   it('enforces in_stock_only', () => {
-    expect(matchesLocalFilters(makeProduct('X', 'Item', 1000, false), { in_stock_only: true })).toBe(false);
-    expect(matchesLocalFilters(makeProduct('X', 'Item', 1000, true), { in_stock_only: true })).toBe(true);
+    expect(matchesLocalFilters(makeProduct('X', 'Item', 1000, 'out_of_stock'), { in_stock_only: true })).toBe(false);
+    expect(matchesLocalFilters(makeProduct('X', 'Item', 1000, 'in_stock'), { in_stock_only: true })).toBe(true);
   });
 
   it('passes everything when no filters were requested', () => {

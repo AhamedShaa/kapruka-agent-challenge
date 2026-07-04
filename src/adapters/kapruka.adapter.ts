@@ -330,6 +330,45 @@ export class KaprukaAdapter implements CommercePort {
   // -------------------------------------------------------------------------
 
   async search(q: string, category?: string, filters?: SearchFilters, cursor?: string): Promise<SearchOutcome> {
+    // Client-side vendor filter — the server has no vendor param. We fetch a
+    // wider batch, hydrate each result to get the vendor field (cached within
+    // the 30-min KaprukaLocal cache, so a second getProduct call in tools.ts
+    // is free), then filter by case-insensitive substring match.
+    if (filters?.vendor) {
+      const vendorLower = filters.vendor.toLowerCase();
+      const wideLimit = Math.max((filters.limit ?? 10) * 2, 20);
+      const vendorArgs: Record<string, unknown> = { q, limit: wideLimit };
+      if (category && this.mode !== 'live') vendorArgs.category = category;
+      if (filters.min_price !== undefined) vendorArgs.min_price = filters.min_price;
+      if (filters.max_price !== undefined) vendorArgs.max_price = filters.max_price;
+      if (filters.in_stock_only !== undefined) vendorArgs.in_stock_only = filters.in_stock_only;
+      if (filters.sort !== undefined) vendorArgs.sort = filters.sort;
+      if (cursor !== undefined) vendorArgs.cursor = cursor;
+
+      const raw = await this.callTool<SearchResult>(TOOL_NAMES.search_products, vendorArgs);
+      const result = normalizeSearchResult(raw);
+
+      if (result.products.length > 0) {
+        const hydrated = await Promise.allSettled(result.products.map((p) => this.getProduct(p.id)));
+        const matched = result.products
+          .map((p, i) => {
+            const r = hydrated[i];
+            return r.status === 'fulfilled' ? r.value : p;
+          })
+          .filter((p) => p.vendor !== null && p.vendor.toLowerCase().includes(vendorLower));
+
+        return {
+          products: matched.slice(0, filters.limit ?? 10),
+          total: matched.length,
+          query: q,
+          cursor: matched.length > 0 ? result.cursor : null,
+          matchOutcome: matched.length > 0 ? 'ok' : 'no-match',
+        };
+      }
+
+      return { products: [], total: 0, query: q, cursor: null, matchOutcome: 'no-match' };
+    }
+
     // R10 fix: live server taxonomy differs — category filtering returns 0 results live.
     const args: Record<string, unknown> = { q };
     if (category && this.mode !== 'live') args.category = category;

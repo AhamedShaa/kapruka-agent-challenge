@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ShoppingCart } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
@@ -10,6 +9,10 @@ import type { RenderEvent, UICartItem, UIProduct } from '@/agent/state.js';
 import ChatInput from '@/components/chat/ChatInput.js';
 import TypingIndicator from '@/components/chat/TypingIndicator.js';
 import RenderEventView from '@/components/chat/RenderEventView.js';
+import UserMessage from '@/components/chat/UserMessage.js';
+import AgentMessage from '@/components/chat/AgentMessage.js';
+import TopBar from '@/components/layout/TopBar.js';
+import Sidebar from '@/components/layout/Sidebar.js';
 import ProductDetailDrawer from '@/components/products/ProductDetailDrawer.js';
 import CartDrawer from '@/components/cart/CartDrawer.js';
 import { computeIncrementalPlan } from '@/lib/displayPlan.js';
@@ -46,7 +49,7 @@ const markdownComponents: Components = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-blue-600 underline hover:text-blue-700"
+      className="text-purple-600 dark:text-[#B49FDD] underline hover:text-purple-700 dark:hover:text-[#B49FDD]"
     >
       {children}
     </a>
@@ -61,25 +64,88 @@ export default function Home(): React.JSX.Element {
   const [cartItems, setCartItems] = useState<UICartItem[]>([]);
   const [cartTotal, setCartTotal] = useState(0);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  // Language is autodetected by the system prompt; locale is fixed for API calls
+  const locale = 'en';
   const [selectedProduct, setSelectedProduct] = useState<UIProduct | null>(null);
   const [browserId, setBrowserId] = useState('');
-  const sessionId = useRef(uuid());
+  const [sessionId, setSessionId] = useState('');
+  const [isHydrating, setIsHydrating] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // Client-side map of productId → image_url. The server cart never carries
+  // images, so we maintain this ref and enrich cart items before rendering.
+  const imageMapRef = useRef<Record<string, string>>({});
 
   useEffect(() => {
-    const stored = window.localStorage.getItem('kapruka_browser_id');
-    if (stored) {
-      setBrowserId(stored);
+    // Persistent browser identity — survives page refresh, cleared in incognito
+    const storedBrowser = window.localStorage.getItem('kapruka_browser_id');
+    if (storedBrowser) {
+      setBrowserId(storedBrowser);
     } else {
       const id = uuid();
       window.localStorage.setItem('kapruka_browser_id', id);
       setBrowserId(id);
+    }
+
+    // Persistent session/thread — reusing the same thread_id resumes the
+    // LangGraph conversation from the SQLite checkpointer across page refreshes
+    // and server restarts. A new UUID is only generated on the first ever visit
+    // (or after the user clears localStorage).
+    const storedSession = window.localStorage.getItem('kasun_session_id');
+    if (storedSession) {
+      setSessionId(storedSession);
+    } else {
+      const id = uuid();
+      window.localStorage.setItem('kasun_session_id', id);
+      setSessionId(id);
     }
   }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // §20 — hydrate chat history + cart from server state on mount.
+  // Runs once when sessionId is resolved from localStorage.
+  useEffect(() => {
+    if (!sessionId) return;
+
+    let cancelled = false;
+
+    Promise.all([
+      fetch(`/api/session/history?sessionId=${encodeURIComponent(sessionId)}`).then(
+        (r) => r.json() as Promise<{ ok: boolean; messages?: Message[] }>,
+      ),
+      fetch('/api/cart/snapshot').then(
+        (r) => r.json() as Promise<{ ok: boolean; items?: UICartItem[]; total?: number }>,
+      ),
+    ])
+      .then(([historyData, cartData]) => {
+        if (cancelled) return;
+        if (historyData.ok && Array.isArray(historyData.messages) && historyData.messages.length > 0) {
+          setMessages(historyData.messages);
+        }
+        if (cartData.ok && Array.isArray(cartData.items)) {
+          setCartItems(cartData.items);
+          setCartTotal(cartData.total ?? 0);
+        }
+      })
+      .catch(() => null)
+      .finally(() => {
+        if (!cancelled) setIsHydrating(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
+  /** Merge client-known images into a cart item list from the server. */
+  function enrichWithImages(items: UICartItem[]): UICartItem[] {
+    return items.map((item) => ({
+      ...item,
+      image_url: imageMapRef.current[item.productId] ?? item.image_url ?? null,
+    }));
+  }
 
   /** Shared by both the per-message POST stream and the persistent reactive
    * stream below — applies one SSE frame to the assistant message it belongs to. */
@@ -96,7 +162,7 @@ export default function Home(): React.JSX.Element {
         ),
       );
       if (ev.type === 'CART') {
-        setCartItems(ev.items);
+        setCartItems(enrichWithImages(ev.items));
         setCartTotal(ev.total);
       }
 
@@ -123,10 +189,10 @@ export default function Home(): React.JSX.Element {
   // 'token' after a 'done') gets its own fresh assistant message bubble,
   // since reactive turns aren't replies to a specific user message.
   useEffect(() => {
-    if (!sessionId.current) return;
+    if (!sessionId) return;
 
     let activeReactiveMsgId: string | null = null;
-    const source = new EventSource(`/api/chat/reactive-stream?sessionId=${encodeURIComponent(sessionId.current)}`);
+    const source = new EventSource(`/api/chat/reactive-stream?sessionId=${encodeURIComponent(sessionId)}`);
 
     source.onmessage = (ev: MessageEvent<string>) => {
       let frame: unknown;
@@ -152,10 +218,10 @@ export default function Home(): React.JSX.Element {
     };
 
     return () => source.close();
-  }, []);
+  }, [sessionId]);
 
   async function sendMessage(text: string): Promise<void> {
-    if (!text.trim() || isLoading) return;
+    if (!text.trim() || isLoading || !sessionId) return;
     setIsLoading(true);
 
     const userMsgId = uuid();
@@ -173,8 +239,8 @@ export default function Home(): React.JSX.Element {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          sessionId: sessionId.current,
-          locale: 'en',
+          sessionId: sessionId,
+          locale,
           browserId,
         }),
       });
@@ -247,12 +313,12 @@ export default function Home(): React.JSX.Element {
     fetch('/api/cart/direct-action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: sessionId.current, action, productId, quantity }),
+      body: JSON.stringify({ sessionId: sessionId, action, productId, quantity }),
     })
       .then((res) => res.json())
       .then((data: { ok: boolean; items?: UICartItem[]; total?: number }) => {
         if (data.ok && data.items && typeof data.total === 'number') {
-          setCartItems(data.items);
+          setCartItems(enrichWithImages(data.items));
           setCartTotal(data.total);
         } else {
           setCartItems(prevItems);
@@ -265,13 +331,14 @@ export default function Home(): React.JSX.Element {
       });
   }
 
-  function handleAddToCart(product: UIProduct): void {
+  function handleAddToCart(product: UIProduct, qty = 1): void {
+    if (product.image_url) imageMapRef.current[product.id] = product.image_url;
     const existing = cartItems.find((i) => i.productId === product.id);
     const optimisticItems = existing
-      ? cartItems.map((i) => (i.productId === product.id ? { ...i, quantity: i.quantity + 1 } : i))
-      : [...cartItems, { productId: product.id, name: product.name, price: product.price, quantity: 1 }];
+      ? cartItems.map((i) => (i.productId === product.id ? { ...i, quantity: i.quantity + qty } : i))
+      : [...cartItems, { productId: product.id, name: product.name, price: product.price, quantity: qty, image_url: product.image_url ?? null }];
 
-    mutateCartDirect('add', product.id, optimisticItems, 1);
+    mutateCartDirect('add', product.id, optimisticItems, qty);
   }
 
   function handleQuantityChange(productId: string, newQuantity: number): void {
@@ -288,7 +355,23 @@ export default function Home(): React.JSX.Element {
     mutateCartDirect('remove', productId, optimisticItems);
   }
 
+  function checkoutSingleItem(product: UIProduct, qty: number): void {
+    if (product.image_url) imageMapRef.current[product.id] = product.image_url;
+    const msg =
+      `Buy now: I want to purchase exactly ${qty}× ${product.name} (ID: ${product.id}) ` +
+      `for LKR ${product.price.toLocaleString()} each. ` +
+      `Please clear my cart, add only this item with quantity ${qty}, ` +
+      `then guide me through checkout.`;
+    sendMessage(msg).catch(() => null);
+  }
+
+  function handleBuyNow(product: UIProduct, qty = 1): void {
+    checkoutSingleItem(product, qty);
+  }
+
   function handleViewDetail(product: UIProduct): void {
+    // Mutual exclusion: opening product detail closes the cart drawer
+    setIsCartOpen(false);
     // Open immediately with the thin shape already in hand (good perceived
     // performance), then replace with the full shape (real description) once
     // the fetch resolves. Search results never carry a description — only
@@ -299,7 +382,9 @@ export default function Home(): React.JSX.Element {
       .then((res) => res.json())
       .then((data: { ok: boolean; product?: UIProduct }) => {
         if (data.ok && data.product) {
-          setSelectedProduct((current) => (current?.id === product.id ? (data.product as UIProduct) : current));
+          const full = data.product as UIProduct;
+          if (full.image_url) imageMapRef.current[full.id] = full.image_url;
+          setSelectedProduct((current) => (current?.id === product.id ? full : current));
         }
       })
       .catch(() => null);
@@ -308,50 +393,63 @@ export default function Home(): React.JSX.Element {
   const cartCount = cartItems.reduce((n, item) => n + item.quantity, 0);
 
   return (
-    <div className="flex flex-col h-screen bg-white">
-      {/* Header */}
-      <header className="h-14 border-b border-gray-100 flex items-center justify-between px-4 flex-shrink-0">
-        <div className="flex items-baseline gap-2">
-          <span className="font-semibold text-lg text-gray-900">Kasun</span>
-          <span className="text-sm text-gray-400">Kapruka Shopping Assistant</span>
-        </div>
-        <button
-          type="button"
-          onClick={() => setIsCartOpen(true)}
-          className="relative p-2 text-gray-500 hover:text-gray-900 transition-colors"
-          aria-label={`Cart — ${cartCount} item${cartCount !== 1 ? 's' : ''}`}
-        >
-          <ShoppingCart className="w-5 h-5" />
-          {cartCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-blue-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-              {cartCount > 9 ? '9+' : cartCount}
-            </span>
-          )}
-        </button>
-      </header>
+    <div className="flex flex-col h-screen bg-white dark:bg-[#17141F]">
+      <TopBar
+        cartCount={cartCount}
+        onCartOpen={() => { setIsCartOpen(true); setSelectedProduct(null); }}
+      />
+
+      {/* Below TopBar: sidebar + chat area side-by-side */}
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar />
+
+        {/* Chat column */}
+        <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
       {/* Messages */}
       <main className="flex-1 overflow-y-auto px-4 py-6">
-        <div className="max-w-2xl mx-auto w-full space-y-5">
-          {messages.length === 0 && (
-            <div className="text-center mt-16">
-              <p className="text-2xl font-semibold text-gray-800">Hi, I&apos;m Kasun.</p>
-              <p className="text-gray-400 mt-2 text-sm">
-                Tell me what you&apos;re looking for — a gift, an occasion, or a product.
-              </p>
+        <div
+          className="max-w-2xl mx-auto w-full space-y-5"
+          role="log"
+          aria-live="polite"
+          aria-label="Conversation"
+        >
+          {isHydrating && (
+            <div
+              className="space-y-6 mt-6 animate-pulse motion-reduce:animate-none"
+              aria-label="Loading conversation…"
+              aria-busy={true}
+            >
+              <div className="flex items-start gap-2">
+                <div className="w-7 h-7 rounded-full bg-gray-200 dark:bg-[#2A2438] flex-shrink-0" />
+                <div className="flex-1 space-y-2 pt-1">
+                  <div className="h-3.5 bg-gray-200 dark:bg-[#2A2438] rounded w-3/4" />
+                  <div className="h-3.5 bg-gray-200 dark:bg-[#2A2438] rounded w-1/2" />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <div className="h-3.5 bg-purple-100 dark:bg-[#2A2438] rounded w-1/3" />
+              </div>
+              <div className="flex items-start gap-2">
+                <div className="w-7 h-7 rounded-full bg-gray-200 dark:bg-[#2A2438] flex-shrink-0" />
+                <div className="flex-1 space-y-2 pt-1">
+                  <div className="h-3.5 bg-gray-200 dark:bg-[#2A2438] rounded w-4/5" />
+                  <div className="h-3.5 bg-gray-200 dark:bg-[#2A2438] rounded w-2/3" />
+                  <div className="h-3.5 bg-gray-200 dark:bg-[#2A2438] rounded w-1/2" />
+                </div>
+              </div>
             </div>
           )}
 
-          {messages.map((msg) => {
+
+          {!isHydrating && messages.map((msg, msgIdx) => {
             if (msg.role === 'user') {
-              return (
-                <div key={msg.id} className="flex justify-end">
-                  <div className="bg-gray-100 rounded-2xl px-4 py-2 text-sm text-gray-900 max-w-[80%] whitespace-pre-wrap">
-                    {msg.content}
-                  </div>
-                </div>
-              );
+              return <UserMessage key={msg.id}>{msg.content}</UserMessage>;
             }
+
+            // Avatar appears only on the first agent bubble after a user message
+            const prevMsg = messages[msgIdx - 1];
+            const isFirstAgentInRun = !prevMsg || prevMsg.role === 'user';
 
             // Recomputed fresh on every render from the current (possibly
             // partial) content — see computeIncrementalPlan's docstring for
@@ -359,26 +457,31 @@ export default function Home(): React.JSX.Element {
             const plan = computeIncrementalPlan(msg.content, msg.renderEvents ?? [], !!msg.isStreaming);
 
             return (
-              <div key={msg.id} className="flex flex-col">
+              <div key={msg.id} className="flex flex-col gap-1.5">
                 {msg.isStreaming && !msg.content && !msg.renderEvents?.length ? (
-                  <TypingIndicator />
+                  <AgentMessage showAvatar={isFirstAgentInRun}>
+                    <TypingIndicator />
+                  </AgentMessage>
                 ) : (
                   plan.map((segment, i) =>
                     segment.kind === 'text' ? (
-                      <div key={i} className="text-sm leading-relaxed text-gray-800">
+                      <AgentMessage key={i} showAvatar={isFirstAgentInRun && i === 0}>
                         <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                           {segment.content}
                         </ReactMarkdown>
-                      </div>
+                      </AgentMessage>
                     ) : (
-                      <RenderEventView
-                        key={i}
-                        event={segment.event}
-                        isStreaming={msg.isStreaming}
-                        onAddToCart={handleAddToCart}
-                        onViewDetail={handleViewDetail}
-                        onSendMessage={(t) => { sendMessage(t).catch(() => null); }}
-                      />
+                      /* Render events indent past the avatar (w-7 + gap-2 = 36px) */
+                      <div key={i} className="pl-9">
+                        <RenderEventView
+                          event={segment.event}
+                          isStreaming={msg.isStreaming}
+                          onAddToCart={handleAddToCart}
+                          onViewDetail={handleViewDetail}
+                          onBuyNow={handleBuyNow}
+                          onSendMessage={(t) => { sendMessage(t).catch(() => null); }}
+                        />
+                      </div>
                     ),
                   )
                 )}
@@ -391,17 +494,24 @@ export default function Home(): React.JSX.Element {
       </main>
 
       {/* Input bar */}
-      <footer className="border-t border-gray-100 px-4 py-3 bg-white flex-shrink-0">
+      <footer
+        className="border-t border-gray-100 dark:border-[#3A3350] px-4 pt-3 bg-white dark:bg-[#17141F] flex-shrink-0"
+        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0.75rem))' }}
+      >
         <div className="max-w-2xl mx-auto w-full">
-          <ChatInput onSend={(t) => { sendMessage(t).catch(() => null); }} disabled={isLoading} />
+          <ChatInput onSend={(t) => { sendMessage(t).catch(() => null); }} disabled={isLoading || isHydrating} />
         </div>
       </footer>
+
+        </div>{/* end chat column */}
+      </div>{/* end sidebar + chat row */}
 
       {/* Drawers */}
       <ProductDetailDrawer
         product={selectedProduct}
         onClose={() => setSelectedProduct(null)}
         onAddToCart={handleAddToCart}
+        onBuyNow={checkoutSingleItem}
       />
       <CartDrawer
         items={cartItems}

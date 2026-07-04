@@ -48,7 +48,7 @@ export function matchesLocalFilters(product: NormalizedProduct, filters?: Search
   if (!filters) return true;
   if (filters.min_price !== undefined && (product.price === null || product.price < filters.min_price)) return false;
   if (filters.max_price !== undefined && (product.price === null || product.price > filters.max_price)) return false;
-  if (filters.in_stock_only && !product.in_stock) return false;
+  if (filters.in_stock_only && product.in_stock === 'out_of_stock') return false;
   return true;
 }
 

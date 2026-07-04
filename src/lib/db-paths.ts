@@ -23,6 +23,7 @@ function ensureDir(dir: string): void {
 
 let cartDbPath: string | null = null;
 let memoryDbPath: string | null = null;
+let checkpointDbPath: string | null = null;
 
 export function getCartDbPath(): string {
   if (cartDbPath === null) {
@@ -40,4 +41,13 @@ export function getMemoryDbPath(): string {
     memoryDbPath = path.join(dbDir, 'kapruka-memory.db');
   }
   return memoryDbPath;
+}
+
+export function getCheckpointDbPath(): string {
+  if (checkpointDbPath === null) {
+    const dbDir = process.env.DB_DIR ?? process.cwd();
+    ensureDir(dbDir);
+    checkpointDbPath = path.join(dbDir, 'kapruka-checkpoints.db');
+  }
+  return checkpointDbPath;
 }

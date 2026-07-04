@@ -1,11 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 import type { RenderEvent, UIProduct } from '@/agent/state.js';
 import ProductCarousel from '@/components/products/ProductCarousel.js';
+import RecommendationCarousel from '@/components/products/RecommendationCarousel.js';
 import ProductDetailDrawer from '@/components/products/ProductDetailDrawer.js';
 import DeliveryCard from '@/components/delivery/DeliveryCard.js';
 import CheckoutPanel from '@/components/checkout/CheckoutPanel.js';
+import ResponseCard from '@/components/ui/ResponseCard.js';
 
 /**
  * Subcomponent so useState can live outside the switch-case in RenderEventView.
@@ -14,9 +17,11 @@ import CheckoutPanel from '@/components/checkout/CheckoutPanel.js';
 function ProductDetailEvent({
   product,
   onAddToCart,
+  onBuyNow,
 }: {
   product: UIProduct;
-  onAddToCart: (p: UIProduct) => void;
+  onAddToCart: (p: UIProduct, qty: number) => void;
+  onBuyNow: (p: UIProduct, qty: number) => void;
 }): React.JSX.Element {
   const [open, setOpen] = useState(true);
   return (
@@ -24,6 +29,7 @@ function ProductDetailEvent({
       product={open ? product : null}
       onClose={() => setOpen(false)}
       onAddToCart={onAddToCart}
+      onBuyNow={onBuyNow}
     />
   );
 }
@@ -31,8 +37,9 @@ function ProductDetailEvent({
 interface RenderEventViewProps {
   event: RenderEvent;
   isStreaming?: boolean;
-  onAddToCart: (product: UIProduct) => void;
+  onAddToCart: (product: UIProduct, qty?: number) => void;
   onViewDetail: (product: UIProduct) => void;
+  onBuyNow: (product: UIProduct, qty?: number) => void;
   onSendMessage: (text: string) => void;
 }
 
@@ -41,6 +48,7 @@ export default function RenderEventView({
   isStreaming,
   onAddToCart,
   onViewDetail,
+  onBuyNow,
   onSendMessage,
 }: RenderEventViewProps): React.JSX.Element | null {
   switch (event.type) {
@@ -52,11 +60,19 @@ export default function RenderEventView({
           loading={isStreaming}
           onAddToCart={onAddToCart}
           onViewDetail={onViewDetail}
+          onBuyNow={onBuyNow}
+          onSendMessage={onSendMessage}
         />
       );
 
     case 'PRODUCT_DETAIL':
-      return <ProductDetailEvent product={event.product} onAddToCart={onAddToCart} />;
+      return (
+        <ProductDetailEvent
+          product={event.product}
+          onAddToCart={(p, qty) => onAddToCart(p, qty)}
+          onBuyNow={(p, qty) => onBuyNow(p, qty)}
+        />
+      );
 
     case 'CART':
       return null;
@@ -85,27 +101,46 @@ export default function RenderEventView({
     case 'RECOMMENDATIONS':
       if (event.products.length === 0) return null;
       return (
-        <div className="flex flex-wrap gap-2 mt-2">
-          {event.products.slice(0, 3).map((product) => (
-            <button
-              key={product.id}
-              type="button"
-              onClick={() => onSendMessage(`Tell me more about ${product.name}`)}
-              className="inline-flex items-center border border-gray-200 rounded-full text-xs px-3 py-1 gap-1 hover:bg-gray-50 transition-colors text-gray-700"
-            >
-              {product.name.length > 30 ? `${product.name.slice(0, 30)}…` : product.name}
-            </button>
-          ))}
-        </div>
+        <RecommendationCarousel
+          products={event.products}
+          onAddToCart={onAddToCart}
+          onViewDetail={onViewDetail}
+          onBuyNow={onBuyNow}
+        />
       );
 
     case 'ERROR':
-      return <p className="text-sm text-red-500 mt-1">{event.message}</p>;
+      /* Formatted error — never raw MCP/Zod text — in a ResponseCard error variant */
+      return (
+        <ResponseCard
+          variant="error"
+          icon={<AlertCircle className="w-4 h-4" />}
+          title="Something went wrong"
+          rows={[{ label: 'Details', value: event.message }]}
+        />
+      );
 
     case 'TOOL_ACTIVITY':
+      /* Checkout is the highest-anxiety moment — show a prominent progress card */
+      if (event.tool === 'create_order') {
+        return (
+          <ResponseCard
+            icon={
+              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+            }
+            title="Confirming with Kapruka…"
+            footer={
+              <p className="text-xs text-gray-400 font-ui">
+                This usually takes a few seconds — hang tight.
+              </p>
+            }
+          />
+        );
+      }
+      /* All other tool activities: small inline indicator */
       return (
-        <p className="text-xs text-gray-400 flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-pulse" />
+        <p className="text-xs text-gray-400 dark:text-[#A79FBB] flex items-center gap-1.5 font-ui">
+          <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-[#3A3350] animate-pulse motion-reduce:animate-none" />
           {event.label}
         </p>
       );

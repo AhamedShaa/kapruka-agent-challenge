@@ -27,7 +27,7 @@ describe('normalizeSearchProduct', () => {
     expect(result.id).toBe('FLOWERS00T1875');
     expect(result.name).toBe('Rose Elegance Display Vase With 30 Red Roses');
     expect(result.price).toBe(18000);
-    expect(result.in_stock).toBe(true);
+    expect(result.in_stock).toBe('in_stock');
     expect(result.category).toBe('flowers');
   });
 
@@ -165,7 +165,7 @@ describe('normalizeGetProductResult', () => {
       const vendorPart = product.vendor ? ` Vendor: ${product.vendor}.` : '';
       const weightPart = product.weight ? ` Weight: ${product.weight}.` : '';
       const urlPart = product.product_url ? ` URL: ${product.product_url}.` : '';
-      const str = `${product.name ?? 'Unnamed item'} — LKR ${product.price}. ${description}In stock: ${product.in_stock ? 'yes' : 'no'}.${vendorPart}${weightPart}${urlPart}`;
+      const str = `${product.name ?? 'Unnamed item'} — LKR ${product.price}. ${description}In stock: ${product.in_stock !== 'out_of_stock' ? 'yes' : 'no'}.${vendorPart}${weightPart}${urlPart}`;
 
       expect(str).toContain('Vendor: Kapruka Cakes Cake');
       expect(str).toContain('Weight: 3 lbs');
