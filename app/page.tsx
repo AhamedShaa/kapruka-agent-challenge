@@ -577,7 +577,7 @@ export default function Home(): React.JSX.Element {
         total={cartTotal}
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
-        onCheckout={() => setIsCartOpen(false)}
+        onCheckout={() => { setIsCartOpen(false); sendMessage("I'm ready to checkout").catch(() => null); }}
         onQuantityChange={handleQuantityChange}
         onRemove={handleRemoveFromCart}
       />
