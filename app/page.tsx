@@ -9,8 +9,11 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
 
+import { useAIAgent } from '@vocalbridgeai/react';
+
 import type { RenderEvent, UICartItem, UIProduct } from '@/agent/state.js';
 import ChatInput from '@/components/chat/ChatInput.js';
+import VoiceButton from '@/components/chat/VoiceButton.js';
 import TypingIndicator from '@/components/chat/TypingIndicator.js';
 import RenderEventView from '@/components/chat/RenderEventView.js';
 import UserMessage from '@/components/chat/UserMessage.js';
@@ -247,6 +250,56 @@ export default function Home(): React.JSX.Element {
     return () => source.close();
   }, [sessionId]);
 
+  /** Streams one turn of /api/chat, applying each SSE frame to `assistantMsgId`,
+   * and returns the full concatenated token text once the stream finishes. */
+  async function streamChat(text: string, assistantMsgId: string): Promise<string> {
+    let fullText = '';
+
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: text,
+        sessionId: sessionId,
+        locale,
+        browserId,
+      }),
+    });
+
+    if (!response.body) throw new Error('No response body');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const chunks = buffer.split('\n\n');
+      buffer = chunks.pop() ?? '';
+
+      for (const chunk of chunks) {
+        const payload = chunk.replace(/^data: /, '').trim();
+        if (!payload) continue;
+
+        let frame: unknown;
+        try {
+          frame = JSON.parse(payload);
+        } catch {
+          continue;
+        }
+        if (!isSseFrame(frame)) continue;
+
+        if (frame.type === 'token') fullText += frame.delta;
+        applySseFrame(frame, assistantMsgId);
+      }
+    }
+
+    return fullText;
+  }
+
   async function sendMessage(text: string): Promise<void> {
     if (!text.trim() || isLoading || !sessionId) return;
     setCartPending(false);
@@ -262,49 +315,7 @@ export default function Home(): React.JSX.Element {
     ]);
 
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          sessionId: sessionId,
-          locale,
-          browserId,
-        }),
-      });
-
-      if (!response.body) throw new Error('No response body');
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const chunks = buffer.split('\n\n');
-        buffer = chunks.pop() ?? '';
-
-        for (const chunk of chunks) {
-          const payload = chunk.replace(/^data: /, '').trim();
-          if (!payload) continue;
-
-          let frame: unknown;
-          try {
-            frame = JSON.parse(payload);
-          } catch {
-            continue;
-          }
-          if (!isSseFrame(frame)) continue;
-
-          applySseFrame(frame, assistantMsgId);
-          if (frame.type === 'done') {
-            setIsLoading(false);
-          }
-        }
-      }
+      await streamChat(text, assistantMsgId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setMessages((prev) =>
@@ -318,6 +329,37 @@ export default function Home(): React.JSX.Element {
       setIsLoading(false);
     }
   }
+
+  // Delegates voice questions (spoken to the Vocal Bridge agent) to Kasun's
+  // own /api/chat pipeline, so voice and text share the same brain, cart,
+  // and memory. The spoken turn is also rendered as a normal chat bubble.
+  useAIAgent({
+    onQuery: async (query: string): Promise<string> => {
+      if (!sessionId) return "Sorry, I'm not ready yet — try again in a moment.";
+
+      const userMsgId = uuid();
+      const assistantMsgId = uuid();
+      setMessages((prev) => [
+        ...prev,
+        { id: userMsgId, role: 'user', content: query },
+        { id: assistantMsgId, role: 'assistant', content: '', isStreaming: true },
+      ]);
+
+      try {
+        const fullText = await streamChat(query, assistantMsgId);
+        return fullText || "Here's what I found — take a look at the screen.";
+      } catch {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? { ...m, content: 'Something went wrong.', isStreaming: false }
+              : m,
+          ),
+        );
+        return 'Sorry, something went wrong on my end.';
+      }
+    },
+  });
 
   /**
    * Optimistic-then-reconcile: applies a locally-computed cart update
@@ -613,7 +655,10 @@ export default function Home(): React.JSX.Element {
               </span>
             </div>
           )}
-          <ChatInput onSend={(t) => { sendMessage(t).catch(() => null); }} disabled={isLoading || isHydrating} />
+          <div className="relative">
+            <ChatInput onSend={(t) => { sendMessage(t).catch(() => null); }} disabled={isLoading || isHydrating} />
+            <VoiceButton />
+          </div>
         </div>
       </footer>
 
