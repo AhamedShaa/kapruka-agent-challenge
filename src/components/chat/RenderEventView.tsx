@@ -1,38 +1,13 @@
 'use client';
 
-import { useState } from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import type { RenderEvent, UIProduct } from '@/agent/state.js';
 import ProductCarousel from '@/components/products/ProductCarousel.js';
+import ProductCard from '@/components/products/ProductCard.js';
 import RecommendationCarousel from '@/components/products/RecommendationCarousel.js';
-import ProductDetailDrawer from '@/components/products/ProductDetailDrawer.js';
 import DeliveryCard from '@/components/delivery/DeliveryCard.js';
 import CheckoutPanel from '@/components/checkout/CheckoutPanel.js';
 import ResponseCard from '@/components/ui/ResponseCard.js';
-
-/**
- * Subcomponent so useState can live outside the switch-case in RenderEventView.
- * Starts open; the X button closes it in-place without unmounting the message.
- */
-function ProductDetailEvent({
-  product,
-  onAddToCart,
-  onBuyNow,
-}: {
-  product: UIProduct;
-  onAddToCart: (p: UIProduct, qty: number) => void;
-  onBuyNow: (p: UIProduct, qty: number) => void;
-}): React.JSX.Element {
-  const [open, setOpen] = useState(true);
-  return (
-    <ProductDetailDrawer
-      product={open ? product : null}
-      onClose={() => setOpen(false)}
-      onAddToCart={onAddToCart}
-      onBuyNow={onBuyNow}
-    />
-  );
-}
 
 interface RenderEventViewProps {
   event: RenderEvent;
@@ -67,11 +42,16 @@ export default function RenderEventView({
 
     case 'PRODUCT_DETAIL':
       return (
-        <ProductDetailEvent
-          product={event.product}
-          onAddToCart={(p, qty) => onAddToCart(p, qty)}
-          onBuyNow={(p, qty) => onBuyNow(p, qty)}
-        />
+        <div className="w-[210px]">
+          <ProductCard
+            product={event.product}
+            index={0}
+            variant="detail"
+            onAddToCart={(p) => onAddToCart(p)}
+            onViewDetail={() => undefined}
+            onBuyNow={() => undefined}
+          />
+        </div>
       );
 
     case 'CART':

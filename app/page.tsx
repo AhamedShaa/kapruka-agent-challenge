@@ -245,6 +245,7 @@ export default function Home(): React.JSX.Element {
 
   async function sendMessage(text: string): Promise<void> {
     if (!text.trim() || isLoading || !sessionId) return;
+    setCartPending(false);
     setIsLoading(true);
 
     const userMsgId = uuid();
@@ -370,12 +371,14 @@ export default function Home(): React.JSX.Element {
       return;
     }
     setCartPending(true);
+    setTimeout(() => setCartPending(false), 10_000);
     const optimisticItems = cartItems.map((i) => (i.productId === productId ? { ...i, quantity: newQuantity } : i));
     mutateCartDirect('updateQuantity', productId, optimisticItems, newQuantity);
   }
 
   function handleRemoveFromCart(productId: string): void {
     setCartPending(true);
+    setTimeout(() => setCartPending(false), 10_000);
     const optimisticItems = cartItems.filter((i) => i.productId !== productId);
     mutateCartDirect('remove', productId, optimisticItems);
   }
