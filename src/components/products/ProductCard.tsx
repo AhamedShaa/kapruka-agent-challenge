@@ -39,7 +39,7 @@ export default function ProductCard({
   if (variant === 'detail') {
     return (
       <motion.div
-        className="max-w-sm w-full flex-shrink-0 bg-white dark:bg-[#201C2C] rounded-xl border border-gray-200 dark:border-[#3A3350] shadow-sm dark:shadow-none overflow-hidden flex flex-row transition-[box-shadow,border-color] duration-150 motion-reduce:transition-none hover:shadow-md dark:hover:border-[#A79FBB]"
+        className="w-full bg-white dark:bg-[#201C2C] rounded-xl border border-gray-200 dark:border-[#3A3350] shadow-sm dark:shadow-none overflow-hidden flex flex-row transition-[box-shadow,border-color] duration-150 motion-reduce:transition-none hover:shadow-md dark:hover:border-[#A79FBB]"
         initial={shouldReduce ? false : { opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={shouldReduce ? { duration: 0 } : { duration: 0.2 }}

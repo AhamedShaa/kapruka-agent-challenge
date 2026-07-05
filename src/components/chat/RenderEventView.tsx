@@ -42,16 +42,14 @@ export default function RenderEventView({
 
     case 'PRODUCT_DETAIL':
       return (
-        <div className="max-w-sm">
-          <ProductCard
-            product={event.product}
-            index={0}
-            variant="detail"
-            onAddToCart={(p) => onAddToCart(p)}
-            onViewDetail={() => undefined}
-            onBuyNow={() => undefined}
-          />
-        </div>
+        <ProductCard
+          product={event.product}
+          index={0}
+          variant="detail"
+          onAddToCart={(p) => onAddToCart(p)}
+          onViewDetail={() => undefined}
+          onBuyNow={() => undefined}
+        />
       );
 
     case 'CART':

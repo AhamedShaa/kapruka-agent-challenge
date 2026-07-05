@@ -39,7 +39,7 @@ export default function ResponseCard({
   return (
     <div
       className={[
-        'border-l-[3px] rounded-r-xl px-4 py-3.5 max-w-sm',
+        'border-l-[3px] rounded-r-xl px-4 py-3.5 w-full',
         v.border,
         v.bg,
       ].join(' ')}
