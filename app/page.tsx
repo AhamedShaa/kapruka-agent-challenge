@@ -1,6 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+
+// Versioned localStorage key — bump NEXT_PUBLIC_SESSION_VERSION on Render to
+// force all browsers to start a fresh session after a deployment.
+const SESSION_KEY = `kasun_session_id_${process.env.NEXT_PUBLIC_SESSION_VERSION ?? 'v1'}`;
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
@@ -112,12 +116,12 @@ export default function Home(): React.JSX.Element {
     // LangGraph conversation from the SQLite checkpointer across page refreshes
     // and server restarts. A new UUID is only generated on the first ever visit
     // (or after the user clears localStorage).
-    const storedSession = window.localStorage.getItem('kasun_session_id');
+    const storedSession = window.localStorage.getItem(SESSION_KEY);
     if (storedSession) {
       setSessionId(storedSession);
     } else {
       const id = uuid();
-      window.localStorage.setItem('kasun_session_id', id);
+      window.localStorage.setItem(SESSION_KEY, id);
       setSessionId(id);
     }
   }, []);
