@@ -7,8 +7,6 @@ import {
   Package,
   Bell,
   Settings,
-  ChevronLeft,
-  ChevronRight,
   Moon,
   ArrowLeft,
 } from 'lucide-react';
@@ -40,11 +38,26 @@ export default function Sidebar(): React.JSX.Element {
   const [view, setView] = useState<SidebarView>('nav');
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const asideRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const stored = window.localStorage.getItem('kasun_sidebar_collapsed');
     setIsCollapsed(stored !== 'false');
   }, []);
+
+  // Collapse when user clicks outside the sidebar
+  useEffect(() => {
+    if (isCollapsed) return;
+    function handleClickOutside(e: MouseEvent): void {
+      if (asideRef.current && !asideRef.current.contains(e.target as Node)) {
+        setIsCollapsed(true);
+        window.localStorage.setItem('kasun_sidebar_collapsed', 'true');
+        setView('nav');
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isCollapsed]);
 
   function expand(): void {
     setIsCollapsed(false);
@@ -78,7 +91,7 @@ export default function Sidebar(): React.JSX.Element {
     setView('settings');
   }
 
-  const W = isCollapsed ? 'w-16' : 'w-64';
+  const W = isCollapsed ? 'w-14' : 'w-64';
 
   const itemCls = (active = false) =>
     [
@@ -94,6 +107,7 @@ export default function Sidebar(): React.JSX.Element {
   return (
     <>
       <aside
+        ref={asideRef}
         className={[
           'hidden md:flex flex-col flex-shrink-0 h-full',
           'bg-white dark:bg-[#201C2C] border-r border-gray-100 dark:border-[#3A3350]',
@@ -102,37 +116,35 @@ export default function Sidebar(): React.JSX.Element {
         ].join(' ')}
         aria-label="Navigation"
       >
-        {/* Logo slot + collapse toggle */}
-        <div className="h-14 flex items-center px-3 border-b border-gray-50 dark:border-[#3A3350] flex-shrink-0 gap-2">
-          {/* TODO: swap gradient mark for <img src="/kapruka-logo.svg"> when the asset is ready */}
+        {/* Logo — click to toggle collapse */}
+        <button
+          type="button"
+          onClick={toggleCollapse}
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!isCollapsed}
+          className={[
+            'h-14 flex items-center flex-shrink-0 gap-2.5 w-full',
+            'border-b border-gray-50 dark:border-[#3A3350]',
+            'hover:bg-gray-50 dark:hover:bg-[#2A2438]',
+            'transition-colors duration-150 motion-reduce:transition-none',
+            'focus-visible:outline-none focus-visible:shadow-focus',
+            isCollapsed ? 'justify-center px-0' : 'px-3',
+          ].join(' ')}
+        >
+          {/* Logo mark — swap src for real asset once placed in public/ */}
           <div
-            className="w-7 h-7 rounded-full flex-shrink-0"
+            className="w-7 h-7 rounded-full flex-shrink-0 overflow-hidden"
             style={{ background: 'linear-gradient(135deg, #402970, #FFB800)' }}
             aria-hidden="true"
-          />
+          >
+            <img src="/kapruka-logo.png" alt="" className="w-full h-full object-contain" />
+          </div>
           {!isCollapsed && (
-            <span className="flex-1 font-semibold text-sm text-gray-900 dark:text-[#F2F0F5] font-ui tracking-tight truncate">
+            <span className="flex-1 font-semibold text-sm text-gray-900 dark:text-[#F2F0F5] font-body tracking-tight truncate text-left">
               Kapruka
             </span>
           )}
-          <button
-            type="button"
-            onClick={toggleCollapse}
-            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            aria-expanded={!isCollapsed}
-            className={[
-              'p-1.5 rounded-lg text-gray-400 dark:text-[#A79FBB]',
-              'hover:text-gray-700 dark:hover:text-[#F2F0F5] hover:bg-gray-100 dark:hover:bg-[#2A2438]',
-              'transition-colors duration-150 motion-reduce:transition-none',
-              'focus-visible:outline-none focus-visible:shadow-focus',
-              isCollapsed ? '' : 'flex-shrink-0',
-            ].join(' ')}
-          >
-            {isCollapsed
-              ? <ChevronRight className="w-4 h-4" aria-hidden="true" />
-              : <ChevronLeft  className="w-4 h-4" aria-hidden="true" />}
-          </button>
-        </div>
+        </button>
 
         {/* Scrollable content area — nav or one of the content panels */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden py-2">

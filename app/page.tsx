@@ -15,7 +15,7 @@ import TypingIndicator from '@/components/chat/TypingIndicator.js';
 import RenderEventView from '@/components/chat/RenderEventView.js';
 import UserMessage from '@/components/chat/UserMessage.js';
 import AgentMessage from '@/components/chat/AgentMessage.js';
-import TopBar from '@/components/layout/TopBar.js';
+import CartButton from '@/components/layout/CartButton.js';
 import Sidebar from '@/components/layout/Sidebar.js';
 import ProductDetailDrawer from '@/components/products/ProductDetailDrawer.js';
 import CartDrawer from '@/components/cart/CartDrawer.js';
@@ -479,23 +479,22 @@ export default function Home(): React.JSX.Element {
   const cartCount = cartItems.reduce((n, item) => n + item.quantity, 0);
 
   return (
-    <div className="flex flex-col h-screen bg-white dark:bg-[#17141F]">
-      <TopBar
+    <div className="flex h-screen w-full bg-white dark:bg-[#17141F]">
+      {/* Fixed cart icon — top-right, always visible */}
+      <CartButton
         cartCount={cartCount}
         onCartOpen={() => { setIsCartOpen(true); setSelectedProduct(null); }}
       />
 
-      {/* Below TopBar: sidebar + chat area side-by-side */}
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
+      <Sidebar />
 
-        {/* Chat column */}
-        <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      {/* Chat column */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
       {/* Messages */}
       <main className="flex-1 overflow-y-auto px-4 py-6">
         <div
-          className="max-w-2xl mx-auto w-full space-y-5"
+          className="max-w-[768px] mx-auto w-full space-y-5"
           role="log"
           aria-live="polite"
           aria-label="Conversation"
@@ -595,7 +594,7 @@ export default function Home(): React.JSX.Element {
         className="border-t border-gray-100 dark:border-[#3A3350] px-4 pt-3 bg-white dark:bg-[#17141F] flex-shrink-0"
         style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0.75rem))' }}
       >
-        <div className="max-w-2xl mx-auto w-full">
+        <div className="max-w-[768px] mx-auto w-full">
           {cartPending && (
             <div className="flex items-center gap-2 mb-2 px-1">
               <span className="inline-flex items-center gap-1.5 text-xs text-purple-600 dark:text-[#B49FDD]">
@@ -608,8 +607,7 @@ export default function Home(): React.JSX.Element {
         </div>
       </footer>
 
-        </div>{/* end chat column */}
-      </div>{/* end sidebar + chat row */}
+      </div>{/* end chat column */}
 
       {/* Drawers */}
       <ProductDetailDrawer

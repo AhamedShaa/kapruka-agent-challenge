@@ -17,7 +17,9 @@
       "Bash(node -e \"const p = require\\('./node_modules/@langchain/openai/package.json'\\); console.log\\('langchain/openai:', p.version\\)\")",
       "Bash(node -e \"const p = require\\('./node_modules/@langchain/core/package.json'\\); console.log\\('langchain/core:', p.version\\)\")",
       "Bash(node -e \"const m = require\\('./node_modules/@langchain/openai/dist/chat_models.js'\\); const inst = new m.ChatOpenAI\\({apiKey:'x'}\\); console.log\\('withStructuredOutput:', typeof inst.withStructuredOutput\\)\")",
-      "Bash(node -e \"import\\('./node_modules/@langchain/openai/dist/chat_models.js'\\).then\\(m => { const inst = new m.ChatOpenAI\\({apiKey:'x'}\\); console.log\\('withStructuredOutput:', typeof inst.withStructuredOutput\\); }\\).catch\\(e => console.error\\(e.message\\)\\)\")"
+      "Bash(node -e \"import\\('./node_modules/@langchain/openai/dist/chat_models.js'\\).then\\(m => { const inst = new m.ChatOpenAI\\({apiKey:'x'}\\); console.log\\('withStructuredOutput:', typeof inst.withStructuredOutput\\); }\\).catch\\(e => console.error\\(e.message\\)\\)\")",
+      "Bash(dir \"E:\\\\Kapruka\" /b)",
+      "PowerShell(Stop-Process -Id 2536 -Force)"
     ]
   }
 }
