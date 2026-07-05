@@ -68,7 +68,7 @@ export default function ProductCard({
 
         {/* Right: name → price → button */}
         <div className="p-3 flex flex-col flex-1 min-w-0 gap-1">
-          <p className="text-sm font-medium text-gray-900 dark:text-[#F2F0F5] line-clamp-2 leading-snug text-left">
+          <p className="text-sm font-medium text-gray-900 dark:text-[#F2F0F5] line-clamp-2 leading-snug text-left font-heading">
             {product.name}
           </p>
           {secondaryText && (
@@ -153,7 +153,7 @@ export default function ProductCard({
       <div className="p-3 flex flex-col flex-1 gap-1">
         {/* Name */}
         <p
-          className="text-sm font-medium text-gray-900 dark:text-[#F2F0F5] line-clamp-2 leading-snug cursor-pointer"
+          className="text-sm font-medium text-gray-900 dark:text-[#F2F0F5] line-clamp-2 leading-snug cursor-pointer font-heading"
           onClick={() => onViewDetail(product)}
         >
           {product.name}

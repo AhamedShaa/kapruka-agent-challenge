@@ -49,7 +49,7 @@ export default function ResponseCard({
         <span className={`flex-shrink-0 ${v.title}`} aria-hidden="true">
           {icon}
         </span>
-        <p className={`text-sm font-semibold font-ui ${v.title}`}>{title}</p>
+        <p className={`text-sm font-semibold font-heading ${v.title}`}>{title}</p>
       </div>
 
       {/* Key-value rows */}

@@ -123,15 +123,14 @@ export default function Sidebar(): React.JSX.Element {
           aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           aria-expanded={!isCollapsed}
           className={[
-            'h-14 flex items-center flex-shrink-0 gap-2.5 w-full',
+            'h-14 flex items-center flex-shrink-0 w-full',
             'border-b border-gray-50 dark:border-[#3A3350]',
             'hover:bg-gray-50 dark:hover:bg-[#2A2438]',
             'transition-colors duration-150 motion-reduce:transition-none',
             'focus-visible:outline-none focus-visible:shadow-focus',
-            isCollapsed ? 'justify-center px-0' : 'px-3',
+            'justify-start pl-3.5',
           ].join(' ')}
         >
-          {/* Logo mark — swap src for real asset once placed in public/ */}
           <div
             className="w-7 h-7 rounded-full flex-shrink-0 overflow-hidden"
             style={{ background: 'linear-gradient(135deg, #402970, #FFB800)' }}
@@ -139,11 +138,6 @@ export default function Sidebar(): React.JSX.Element {
           >
             <img src="/kapruka-logo.png" alt="" className="w-full h-full object-contain" />
           </div>
-          {!isCollapsed && (
-            <span className="flex-1 font-semibold text-sm text-gray-900 dark:text-[#F2F0F5] font-body tracking-tight truncate text-left">
-              Kapruka
-            </span>
-          )}
         </button>
 
         {/* Scrollable content area — nav or one of the content panels */}

@@ -8,10 +8,14 @@ interface AgentMessageProps {
 function KasunAvatar(): React.JSX.Element {
   return (
     <div
-      className="w-7 h-7 rounded-full bg-yellow-500 flex items-center justify-center flex-shrink-0 mt-0.5"
+      className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 mt-0.5 bg-yellow-500"
       aria-hidden="true"
     >
-      <span className="text-purple-700 text-[11px] font-bold font-ui select-none">K</span>
+      <img
+        src="/kapruka-logo.png"
+        alt=""
+        className="w-full h-full object-contain"
+      />
     </div>
   );
 }

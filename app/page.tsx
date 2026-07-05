@@ -491,6 +491,16 @@ export default function Home(): React.JSX.Element {
       {/* Chat column */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
+        {/* Brand banner strip — sits beside the sidebar icon, always visible */}
+        <div className="h-14 flex-shrink-0 flex items-center px-4 border-b border-gray-100 dark:border-[#3A3350] bg-white dark:bg-[#201C2C] select-none">
+          <img
+            src="/kapruka-banner.jpeg"
+            alt="Kapruka"
+            className="h-8 w-auto object-contain dark:brightness-90"
+            draggable={false}
+          />
+        </div>
+
       {/* Messages */}
       <main className="flex-1 overflow-y-auto px-4 py-6">
         <div

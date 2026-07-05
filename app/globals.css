@@ -5,10 +5,11 @@
 
 /* ── Font wiring (CSS vars injected at runtime by next/font) ── */
 @theme inline {
-  --font-sans: var(--font-geist-sans);   /* existing default — unchanged this phase */
-  --font-mono: var(--font-geist-mono);
-  --font-ui:   var(--font-inter);        /* Inter — prices, labels, nav */
-  --font-body: var(--font-roboto);       /* Roboto — chat text, descriptions */
+  --font-sans:    var(--font-montserrat);  /* Montserrat — global default body font */
+  --font-mono:    var(--font-geist-mono);
+  --font-ui:      var(--font-montserrat);  /* Montserrat — prices, labels, nav */
+  --font-body:    var(--font-montserrat);  /* Montserrat — chat text, descriptions */
+  --font-heading: var(--font-roboto);      /* Roboto — card titles, product names, h1-h3 */
 }
 
 /* ── Design token system ── */
@@ -94,7 +95,7 @@
   --kapruka-text-muted: #6b7280;
   --kapruka-border: #e5e7eb;
   --kapruka-font-heading: 'Roboto', Arial, sans-serif;
-  --kapruka-font-body: 'Roboto', Arial, sans-serif;
+  --kapruka-font-body: 'Montserrat', Arial, sans-serif;
 }
 
 /* ── Dark theme tokens (§1.6) ── */
@@ -116,7 +117,17 @@
   --kapruka-border:     #3A3350;
 }
 
+/* ── Global heading font — Roboto on all semantic headings ── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+}
+
 @layer utilities {
+  /* Roboto heading class for non-semantic heading elements (card titles, product names) */
+  .font-heading {
+    font-family: var(--font-heading);
+  }
+
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
