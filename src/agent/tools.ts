@@ -16,6 +16,7 @@ import type { CustomerMemoryStore } from '@/lib/customerMemory.js';
 import { logger } from '@/lib/logger.js';
 import { searchFAQ } from '@/lib/faq.js';
 import { withCartLock } from '@/adapters/cartLock.js';
+import { storeProductImage, enrichCartItems } from '@/lib/productImageCache.js';
 import { resolveCityQuery } from './cityResolver.js';
 import { toUserSafeMessage } from './errorFormatter.js';
 import type { RenderEventEmitter } from './events.js';
@@ -319,7 +320,7 @@ export function createTools(
     func: async ({ productId }) =>
       runTool('getProduct', emitter, async () => {
         const product = await adapter.getProduct(productId);
-        emitter.emitRender({ type: 'PRODUCT_DETAIL', product: normalizedToUIProduct(product) });
+        emitter.emitRender({ type: 'PRODUCT_DETAIL', product: normalizedToUIProduct(product) }, { defer: true });
 
         const description = product.description ? `${product.description.slice(0, 80)}. ` : '';
         const vendorPart = product.vendor ? ` Vendor: ${product.vendor}.` : '';
@@ -389,11 +390,12 @@ export function createTools(
         const product = await adapter.getProduct(productId);
         const name = product.name ?? productId;
         const price = product.price ?? 0;
+        storeProductImage(productId, product.image_url);
 
         const cart = await withCartLock(() => adapter.addToCart(productId, name, price, quantity));
         emitter.emitRender({
           type: 'CART',
-          items: cart.items.map(normalizedToUICartItem),
+          items: enrichCartItems(cart.items.map(normalizedToUICartItem)),
           total: cart.total,
           itemCount: cart.itemCount,
         });
@@ -413,7 +415,7 @@ export function createTools(
         const cart = await adapter.getCart();
         emitter.emitRender({
           type: 'CART',
-          items: cart.items.map(normalizedToUICartItem),
+          items: enrichCartItems(cart.items.map(normalizedToUICartItem)),
           total: cart.total,
           itemCount: cart.itemCount,
         });
@@ -451,7 +453,7 @@ export function createTools(
         const cart = await withCartLock(() => adapter.removeFromCart(productId));
         emitter.emitRender({
           type: 'CART',
-          items: cart.items.map(normalizedToUICartItem),
+          items: enrichCartItems(cart.items.map(normalizedToUICartItem)),
           total: cart.total,
           itemCount: cart.itemCount,
         });

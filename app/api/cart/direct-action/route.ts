@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getAdapter } from '@/adapters/index.js';
 import { normalizedToUICartItem } from '@/adapters/ui-mappers.js';
 import { withCartLock } from '@/adapters/cartLock.js';
+import { storeProductImage, enrichCartItems } from '@/lib/productImageCache.js';
 import { scheduleReactiveTurn } from '@/agent/reactiveTurn.js';
 import { logger } from '@/lib/logger.js';
 import type { NormalizedCartView } from '@/core/ports/commerce.port.js';
@@ -59,6 +60,7 @@ export async function POST(request: Request): Promise<Response> {
         const product = await adapter.getProduct(productId);
         const name = product.name ?? productId;
         const price = product.price ?? 0;
+        storeProductImage(productId, product.image_url);
         return adapter.addToCart(productId, name, price, quantity ?? 1);
       }
 
@@ -89,7 +91,8 @@ export async function POST(request: Request): Promise<Response> {
       : `User removed an item from their cart directly via the product card.`;
     scheduleReactiveTurn(sessionId, productId, description);
 
-    return Response.json({ ok: true, ...toResponse(result) });
+    const enriched = { ...toResponse(result), items: enrichCartItems(toResponse(result).items) };
+    return Response.json({ ok: true, ...enriched });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error({ err: message, action, productId }, 'direct cart action failed');

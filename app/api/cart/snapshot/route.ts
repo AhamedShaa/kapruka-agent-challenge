@@ -1,5 +1,6 @@
 import { getAdapter } from '@/adapters/index.js';
 import { normalizedToUICartItem } from '@/adapters/ui-mappers.js';
+import { enrichCartItems } from '@/lib/productImageCache.js';
 import { logger } from '@/lib/logger.js';
 
 export const runtime = 'nodejs';
@@ -10,7 +11,7 @@ export async function GET(): Promise<Response> {
     const cart = await adapter.getCart();
     return Response.json({
       ok: true,
-      items: cart.items.map(normalizedToUICartItem),
+      items: enrichCartItems(cart.items.map(normalizedToUICartItem)),
       total: cart.total,
       itemCount: cart.itemCount,
     });

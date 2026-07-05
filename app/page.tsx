@@ -165,7 +165,7 @@ export default function Home(): React.JSX.Element {
   function enrichWithImages(items: UICartItem[]): UICartItem[] {
     return items.map((item) => ({
       ...item,
-      image_url: imageMapRef.current[item.productId] ?? item.image_url ?? null,
+      image_url: item.image_url ?? imageMapRef.current[item.productId] ?? null,
     }));
   }
 
@@ -548,7 +548,7 @@ export default function Home(): React.JSX.Element {
                   plan.map((segment, i) => {
                     if (segment.kind === 'text') {
                       const hasLiveProductEvents = (msg.renderEvents ?? []).some(
-                        (e) => e.type === 'PRODUCT_LIST' || e.type === 'PRODUCT_DETAIL',
+                        (e) => e.type === 'PRODUCT_LIST',
                       );
                       if (hasLiveProductEvents && msg.isStreaming) return null;
                       const displayText = msg.role === 'assistant'

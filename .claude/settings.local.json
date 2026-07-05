@@ -13,7 +13,11 @@
       "PowerShell(head -5)",
       "Bash(npx tsx *)",
       "Bash(npx tsc *)",
-      "Bash(Select-String -NotMatch \"^\\\\[2\")"
+      "Bash(Select-String -NotMatch \"^\\\\[2\")",
+      "Bash(node -e \"const p = require\\('./node_modules/@langchain/openai/package.json'\\); console.log\\('langchain/openai:', p.version\\)\")",
+      "Bash(node -e \"const p = require\\('./node_modules/@langchain/core/package.json'\\); console.log\\('langchain/core:', p.version\\)\")",
+      "Bash(node -e \"const m = require\\('./node_modules/@langchain/openai/dist/chat_models.js'\\); const inst = new m.ChatOpenAI\\({apiKey:'x'}\\); console.log\\('withStructuredOutput:', typeof inst.withStructuredOutput\\)\")",
+      "Bash(node -e \"import\\('./node_modules/@langchain/openai/dist/chat_models.js'\\).then\\(m => { const inst = new m.ChatOpenAI\\({apiKey:'x'}\\); console.log\\('withStructuredOutput:', typeof inst.withStructuredOutput\\); }\\).catch\\(e => console.error\\(e.message\\)\\)\")"
     ]
   }
 }

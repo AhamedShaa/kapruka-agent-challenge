@@ -9,6 +9,7 @@ import { AgentState, type StateType } from './state.js';
 import { getSystemPrompt } from './systemPrompt.js';
 import { stateUpdaterNode } from './stateUpdaterNode.js';
 import { createChatModel } from './model.js';
+import type { RenderEventEmitter } from './events.js';
 
 /**
  * Builds a compiled LangGraph agent. Compiled per-request (not as a module-level
@@ -23,6 +24,7 @@ export function createGraph(
   memoryStore: CustomerMemoryStore,
   checkpointer: BaseCheckpointSaver,
   adapter: CommercePort,
+  emitter: RenderEventEmitter,
 ) {
   const model = createChatModel();
   const modelWithTools = model.bindTools(tools);
@@ -39,6 +41,7 @@ export function createGraph(
     });
 
     const response = await modelWithTools.invoke([new SystemMessage(sysPrompt), ...state.messages]);
+    emitter.flushDeferred();
 
     return { messages: [response] };
   }
@@ -49,10 +52,7 @@ export function createGraph(
 
   function shouldContinue(state: StateType): 'tools' | typeof END {
     const last = state.messages.at(-1);
-    // `instanceof AIMessage` is unreliable here: @langchain/openai and
-    // @langchain/langgraph can resolve to different copies of @langchain/core,
-    // so the model's AIMessageChunk fails the cross-package instanceof check.
-    // Duck-type on `tool_calls` instead, which only AI messages carry.
+    // Duck-type on `tool_calls` — see CLAUDE.md LANGCHAIN INSTANCEOF note.
     const toolCalls = (last as unknown as { tool_calls?: unknown[] } | undefined)?.tool_calls;
     return Array.isArray(toolCalls) && toolCalls.length > 0 ? 'tools' : END;
   }

@@ -42,7 +42,7 @@ export default function RenderEventView({
 
     case 'PRODUCT_DETAIL':
       return (
-        <div className="w-[210px]">
+        <div className="max-w-sm">
           <ProductCard
             product={event.product}
             index={0}

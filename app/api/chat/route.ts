@@ -50,7 +50,7 @@ export async function POST(request: Request): Promise<Response> {
     (priorTuple?.checkpoint.channel_values as Partial<StateType> | undefined)?.lastSearchContext ?? null;
 
   const tools = createTools(adapter, emitter, memoryStore, browserId, lastSearchContext as LastSearchContext | null);
-  const graph = createGraph(tools, memoryStore, checkpointer, adapter);
+  const graph = createGraph(tools, memoryStore, checkpointer, adapter, emitter);
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {

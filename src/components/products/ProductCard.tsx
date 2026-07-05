@@ -36,6 +36,72 @@ export default function ProductCard({
   // so weight is the non-duplicate field to surface here).
   const secondaryText = product.weight ?? null;
 
+  if (variant === 'detail') {
+    return (
+      <motion.div
+        className="max-w-sm w-full flex-shrink-0 bg-white dark:bg-[#201C2C] rounded-xl border border-gray-200 dark:border-[#3A3350] shadow-sm dark:shadow-none overflow-hidden flex flex-row transition-[box-shadow,border-color] duration-150 motion-reduce:transition-none hover:shadow-md dark:hover:border-[#A79FBB]"
+        initial={shouldReduce ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={shouldReduce ? { duration: 0 } : { duration: 0.2 }}
+      >
+        {/* Left: fixed-width square image */}
+        <div className="relative w-32 flex-shrink-0 aspect-square bg-gray-100 dark:bg-[#2A2438] overflow-hidden">
+          {showFallback ? (
+            <div className={['w-full h-full flex items-center justify-center', showOutOfStock ? 'grayscale' : ''].join(' ')}>
+              <Package className="w-8 h-8 text-gray-300 dark:text-[#3A3350]" aria-hidden="true" />
+            </div>
+          ) : (
+            <img
+              src={product.image_url}
+              alt={product.name}
+              loading="lazy"
+              className={['w-full h-full object-cover', showOutOfStock ? 'grayscale' : ''].join(' ')}
+              onError={() => setImgError(true)}
+            />
+          )}
+          {showOutOfStock && (
+            <span className="absolute top-1.5 left-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold leading-none bg-red-600 text-white">
+              Out of stock
+            </span>
+          )}
+        </div>
+
+        {/* Right: name → price → button */}
+        <div className="p-3 flex flex-col flex-1 min-w-0 gap-1">
+          <p className="text-sm font-medium text-gray-900 dark:text-[#F2F0F5] line-clamp-2 leading-snug text-left">
+            {product.name}
+          </p>
+          {secondaryText && (
+            <p className="text-[11px] text-gray-500 dark:text-[#A79FBB] leading-none font-ui">
+              {secondaryText}
+            </p>
+          )}
+          <p className="text-sm font-semibold text-purple-700 dark:text-[#B49FDD] font-ui tabular-nums text-left">
+            LKR {product.price.toLocaleString()}
+          </p>
+          <div className="mt-auto pt-2">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onAddToCart(product); }}
+              disabled={product.in_stock === 'out_of_stock'}
+              className={[
+                'text-[11px] font-semibold py-1.5 px-3 rounded-lg',
+                'border border-purple-200 dark:border-[#3A3350]',
+                'text-purple-700 dark:text-[#B49FDD]',
+                'hover:bg-purple-50 dark:hover:bg-[#2A2438]',
+                'transition-colors duration-150 motion-reduce:transition-none',
+                'focus-visible:outline-none focus-visible:shadow-focus',
+                'disabled:opacity-40 disabled:cursor-not-allowed',
+              ].join(' ')}
+            >
+              Add to cart
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div
       className="w-[210px] flex-shrink-0 bg-white dark:bg-[#201C2C] rounded-xl border border-gray-200 dark:border-[#3A3350] shadow-sm dark:shadow-none overflow-hidden flex flex-col transition-[transform,box-shadow,border-color] duration-150 motion-reduce:transition-none hover:shadow-md dark:hover:border-[#A79FBB] hover:-translate-y-0.5"
@@ -45,12 +111,12 @@ export default function ProductCard({
     >
       {/* Image — 1:1 aspect, clicking opens detail drawer */}
       <div
-        role={variant === 'list' ? 'button' : undefined}
-        tabIndex={variant === 'list' ? 0 : undefined}
-        aria-label={variant === 'list' ? `View details for ${product.name}` : undefined}
-        className={['relative w-full aspect-square overflow-hidden bg-gray-100 dark:bg-[#2A2438]', variant === 'list' ? 'cursor-pointer' : ''].join(' ')}
-        onClick={variant === 'list' ? () => onViewDetail(product) : undefined}
-        onKeyDown={variant === 'list' ? (e) => { if (e.key === 'Enter' || e.key === ' ') onViewDetail(product); } : undefined}
+        role="button"
+        tabIndex={0}
+        aria-label={`View details for ${product.name}`}
+        className="relative w-full aspect-square overflow-hidden bg-gray-100 dark:bg-[#2A2438] cursor-pointer"
+        onClick={() => onViewDetail(product)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onViewDetail(product); }}
       >
         {showFallback ? (
           <div className={['w-full h-full flex items-center justify-center', showOutOfStock ? 'grayscale' : ''].join(' ')}>
@@ -87,8 +153,8 @@ export default function ProductCard({
       <div className="p-3 flex flex-col flex-1 gap-1">
         {/* Name */}
         <p
-          className={['text-sm font-medium text-gray-900 dark:text-[#F2F0F5] line-clamp-2 leading-snug', variant === 'list' ? 'cursor-pointer' : ''].join(' ')}
-          onClick={variant === 'list' ? () => onViewDetail(product) : undefined}
+          className="text-sm font-medium text-gray-900 dark:text-[#F2F0F5] line-clamp-2 leading-snug cursor-pointer"
+          onClick={() => onViewDetail(product)}
         >
           {product.name}
         </p>
@@ -106,22 +172,20 @@ export default function ProductCard({
         </p>
 
         <div className="mt-auto pt-2 flex gap-1.5">
-          {variant === 'list' && (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onBuyNow(product); }}
-              disabled={product.in_stock === 'out_of_stock'}
-              className={[
-                'flex-1 text-[11px] font-semibold py-1.5 rounded-lg',
-                'bg-yellow-500 text-purple-700',
-                'hover:bg-yellow-400 transition-colors duration-150 motion-reduce:transition-none',
-                'focus-visible:outline-none focus-visible:shadow-focus',
-                'disabled:opacity-40 disabled:cursor-not-allowed',
-              ].join(' ')}
-            >
-              Buy now
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onBuyNow(product); }}
+            disabled={product.in_stock === 'out_of_stock'}
+            className={[
+              'flex-1 text-[11px] font-semibold py-1.5 rounded-lg',
+              'bg-yellow-500 text-purple-700',
+              'hover:bg-yellow-400 transition-colors duration-150 motion-reduce:transition-none',
+              'focus-visible:outline-none focus-visible:shadow-focus',
+              'disabled:opacity-40 disabled:cursor-not-allowed',
+            ].join(' ')}
+          >
+            Buy now
+          </button>
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onAddToCart(product); }}

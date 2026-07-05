@@ -6,6 +6,7 @@ import { getMemoryStore } from '@/lib/customerMemory.js';
 import { logger } from '@/lib/logger.js';
 import { createChatModel } from './model.js';
 import { createGraph } from './graph.js';
+import { RenderEventEmitter } from './events.js';
 import { getCheckpointer } from './checkpointer.js';
 import { getSystemPrompt } from './systemPrompt.js';
 import { sseFrame, extractDelta, toMessage } from './sse.js';
@@ -141,7 +142,7 @@ async function runReactiveTurn(sessionId: string, productId: string, description
     // so the LLM is never called a second time for the same turn. Empty tools
     // array: this graph instance exists only to reach .updateState(), it never
     // runs agentNode/ToolNode.
-    const graph = createGraph([], memoryStore, getCheckpointer(), adapter);
+    const graph = createGraph([], memoryStore, getCheckpointer(), adapter, new RenderEventEmitter());
     await graph.updateState(
       { configurable: { thread_id: sessionId } },
       { messages: [syntheticAI, syntheticTool, finalReply], cartSnapshot: freshItems },

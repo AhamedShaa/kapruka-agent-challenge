@@ -8,12 +8,16 @@ import { normalizedToUIProduct } from '@/adapters/ui-mappers.js';
 
 export const runtime = 'nodejs';
 
+type HistoryRenderEvent =
+  | { type: 'PRODUCT_LIST'; products: UIProduct[]; query: string }
+  | { type: 'PRODUCT_DETAIL'; product: UIProduct };
+
 interface HistoryMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   isStreaming: false;
-  renderEvents?: Array<{ type: 'PRODUCT_LIST'; products: UIProduct[]; query: string }>;
+  renderEvents?: HistoryRenderEvent[];
 }
 
 function getMsgType(msg: BaseMessage): string {
@@ -75,81 +79,118 @@ export async function GET(request: Request): Promise<Response> {
       // Drop AI tool-call turns that produced no visible text
       .filter((msg) => msg.content.trim().length > 0);
 
-    // --- Reconstruct PRODUCT_LIST render events from search ToolMessages ---
-    // Find ToolMessages (in original checkpoint order) that look like search results.
-    // For each one, locate the next assistant message in our visible list and attach
-    // a PRODUCT_LIST render event so the carousel re-renders after refresh.
+    // Helper: find the first visible assistant message after rawIndex in stored[].
+    function findNextVisibleAI(rawIndex: number): HistoryMessage | null {
+      for (let j = rawIndex + 1; j < stored.length; j++) {
+        if (getMsgType(stored[j]) === 'ai') {
+          const text = extractText(stored[j].content).trim();
+          if (text.length > 0) {
+            return messages.find((m) => m.role === 'assistant' && m.content === text) ?? null;
+          }
+        }
+      }
+      return null;
+    }
 
+    // --- Reconstruct PRODUCT_LIST render events from search ToolMessages ---
     interface SearchTurn {
       artifact: LastSearchContext;
-      /** Index in the raw stored[] array where this ToolMessage sits. */
       rawIndex: number;
     }
 
     const searchTurns: SearchTurn[] = [];
 
+    // --- Collect getProduct AI message indices for PRODUCT_DETAIL reconstruction ---
+    interface GetProductTurn {
+      productId: string;
+      rawIndex: number; // index of the last getProduct ToolMessage in this batch
+    }
+    const getProductTurns: GetProductTurn[] = [];
+
     for (let i = 0; i < stored.length; i++) {
       const msg = stored[i];
-      if (getMsgType(msg) !== 'tool') continue;
-      const tm = msg as ToolMessage;
-      const content = extractText(tm.content);
-      if (!content.startsWith('Found')) continue;
+      const t = getMsgType(msg);
 
-      const artifact = tm.artifact as LastSearchContext | null | undefined;
-      if (!artifact?.productIndex?.length) continue;
+      if (t === 'tool') {
+        const tm = msg as ToolMessage;
+        const content = extractText(tm.content);
 
-      searchTurns.push({ artifact, rawIndex: i });
-    }
+        // Search ToolMessage: starts with 'Found'
+        if (content.startsWith('Found')) {
+          const artifact = tm.artifact as LastSearchContext | null | undefined;
+          if (artifact?.productIndex?.length) {
+            searchTurns.push({ artifact, rawIndex: i });
+          }
+          continue;
+        }
 
-    // Cap to the most recent MAX_RECONSTRUCTED_SEARCHES turns.
-    const turnsToReconstruct = searchTurns.slice(-MAX_RECONSTRUCTED_SEARCHES);
-
-    if (turnsToReconstruct.length > 0) {
-      const adapter = await getAdapter();
-
-      await Promise.allSettled(
-        turnsToReconstruct.map(async ({ artifact, rawIndex }) => {
-          const productIndex = artifact.productIndex!;
-
-          // Hydrate product details in parallel — same pattern as hydrateAndEmitProducts.
-          const settled = await Promise.allSettled(
-            productIndex.map((entry) => adapter.getProduct(entry.id)),
-          );
-
-          const uiProducts: UIProduct[] = settled
-            .map((r) => (r.status === 'fulfilled' ? normalizedToUIProduct(r.value) : null))
-            .filter((p): p is UIProduct => p !== null);
-
-          if (uiProducts.length === 0) return;
-
-          // Find the first assistant message in `messages[]` whose position in the
-          // original raw array comes AFTER this ToolMessage.
-          // Strategy: walk forward from rawIndex in stored[], skip non-ai messages,
-          // take the first ai message that has visible text — then match its content
-          // to the HistoryMessage we built.
-          let nextAiContent: string | null = null;
-          for (let j = rawIndex + 1; j < stored.length; j++) {
-            if (getMsgType(stored[j]) === 'ai') {
-              const text = extractText(stored[j].content).trim();
-              if (text.length > 0) {
-                nextAiContent = text;
-                break;
+        // getProduct ToolMessage: look at the preceding AI message's tool_calls
+        // to extract the productId. The ToolMessage itself doesn't carry it.
+        // Walk backwards to find the last AI message with tool_calls.
+        let productId: string | null = null;
+        for (let k = i - 1; k >= 0; k--) {
+          if (getMsgType(stored[k]) === 'ai') {
+            const toolCalls = (stored[k] as unknown as { tool_calls?: Array<{ name: string; args: Record<string, unknown> }> }).tool_calls;
+            if (Array.isArray(toolCalls)) {
+              // Match by tool_call_id if available on the ToolMessage
+              const tmId = (tm as unknown as { tool_call_id?: string }).tool_call_id;
+              const matchedCall = tmId
+                ? toolCalls.find((c) => (c as unknown as { id?: string }).id === tmId)
+                : toolCalls.find((c) => c.name === 'getProduct');
+              if (matchedCall?.name === 'getProduct') {
+                productId = String(matchedCall.args['productId'] ?? '');
               }
             }
+            break;
           }
-          if (!nextAiContent) return;
+          if (getMsgType(stored[k]) === 'tool') continue;
+          break;
+        }
 
-          const target = messages.find(
-            (m) => m.role === 'assistant' && m.content === nextAiContent,
-          );
-          if (!target) return;
-
-          target.renderEvents = [
-            { type: 'PRODUCT_LIST', products: uiProducts, query: artifact.q },
-          ];
-        }),
-      );
+        if (productId) {
+          getProductTurns.push({ productId, rawIndex: i });
+        }
+      }
     }
+
+    const adapter = await getAdapter();
+
+    // Reconstruct PRODUCT_LIST (capped to avoid thundering-herd on long sessions)
+    const searchesToReconstruct = searchTurns.slice(-MAX_RECONSTRUCTED_SEARCHES);
+    await Promise.allSettled(
+      searchesToReconstruct.map(async ({ artifact, rawIndex }) => {
+        const productIndex = artifact.productIndex!;
+        const settled = await Promise.allSettled(
+          productIndex.map((entry) => adapter.getProduct(entry.id)),
+        );
+        const uiProducts: UIProduct[] = settled
+          .map((r) => (r.status === 'fulfilled' ? normalizedToUIProduct(r.value) : null))
+          .filter((p): p is UIProduct => p !== null);
+        if (uiProducts.length === 0) return;
+
+        const target = findNextVisibleAI(rawIndex);
+        if (!target) return;
+        target.renderEvents = [{ type: 'PRODUCT_LIST', products: uiProducts, query: artifact.q }];
+      }),
+    );
+
+    // Reconstruct PRODUCT_DETAIL (most recent 6 to stay lightweight)
+    const detailsToReconstruct = getProductTurns.slice(-6);
+    await Promise.allSettled(
+      detailsToReconstruct.map(async ({ productId, rawIndex }) => {
+        if (!productId) return;
+        const result = await adapter.getProduct(productId).catch(() => null);
+        if (!result) return;
+        const product = normalizedToUIProduct(result);
+
+        const target = findNextVisibleAI(rawIndex);
+        if (!target) return;
+        target.renderEvents = [
+          ...(target.renderEvents ?? []),
+          { type: 'PRODUCT_DETAIL', product },
+        ];
+      }),
+    );
 
     return Response.json({ ok: true, messages });
   } catch (err) {
