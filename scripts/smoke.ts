@@ -83,6 +83,10 @@ async function run(): Promise<void> {
   });
 
   await check('createOrder', async () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const deliveryDate = tomorrow.toISOString().split('T')[0];
+
     const order = await adapter.createOrder({
       cart: [{ product_id: 'KAP-FLW-001', quantity: 1 }],
       recipient: {
@@ -91,7 +95,7 @@ async function run(): Promise<void> {
         address: '12 Galle Road',
         city: 'COL',
       },
-      delivery: { date: '2026-06-10' },
+      delivery: { date: deliveryDate },
       sender: { name: 'Kamal Perera', phone: '0719876543' },
     });
     createdOrder = order;

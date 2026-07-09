@@ -94,6 +94,30 @@ function toError(err: unknown): Error {
   return new Error(String(err));
 }
 
+/**
+ * Mirrors the request-content markers in agent/errorFormatter.ts (pydantic
+ * validation prose, the city-failure freeform message, and the `Error (code):`
+ * shape) — duplicated here rather than imported, since importing from src/agent/
+ * into src/adapters/ would invert the ports & adapters dependency direction.
+ * Keep in sync with errorFormatter.ts's PYDANTIC_MARKERS/CITY_FAILURE_MARKER
+ * by hand if either changes.
+ */
+const REQUEST_LEVEL_MARKERS = ['validation error for', 'Value error,', 'Field required', 'Delivery check failed for city'];
+const CODED_ERROR_PATTERN = /Error \([a-z_]+\):/i;
+
+/**
+ * True when retrying with a rebuilt connection is pointless because the
+ * problem is what we asked, not how we're connected — KaprukaError,
+ * pydantic validation prose, or any `Error (code): ...` payload.
+ */
+export function isRequestLevelError(err: unknown): boolean {
+  if (err instanceof KaprukaError) return true;
+  if (err instanceof Error) {
+    return REQUEST_LEVEL_MARKERS.some((marker) => err.message.includes(marker)) || CODED_ERROR_PATTERN.test(err.message);
+  }
+  return false;
+}
+
 function extractToolText(result: unknown): string {
   if (
     isRecord(result) &&
@@ -177,17 +201,31 @@ function makeUnknownCityResponse(userCity: string): NormalizedDeliveryCheckWithC
  * the agent core depends solely on the CommercePort interface.
  */
 export class KaprukaAdapter implements CommercePort {
-  private readonly client: Client;
+  private client: Client;
+  private local: KaprukaLocal;
+  private readonly storage: SqliteStorage | MemoryStorage;
   private readonly mode: CommerceMode;
+  /** Dedupes concurrent reconnect() calls — see reconnect() for why. */
+  private reconnectInFlight: Promise<void> | null = null;
 
-  private constructor(client: Client, mode: CommerceMode) {
+  private constructor(client: Client, local: KaprukaLocal, storage: SqliteStorage | MemoryStorage, mode: CommerceMode) {
     this.client = client;
+    this.local = local;
+    this.storage = storage;
     this.mode = mode;
   }
 
-  static async create(mode: CommerceMode): Promise<KaprukaAdapter> {
-    const storage = mode === 'live' ? await SqliteStorage.create(getCartDbPath()) : new MemoryStorage();
-
+  /**
+   * Builds a fresh local-server + in-process transport + client triple, then
+   * warms it up. Shared by create() (first connection) and reconnect()
+   * (rebuilding after a dead session) — storage is passed in rather than
+   * rebuilt so cart state (SqliteStorage on disk, or the in-memory cart for
+   * mock mode) survives a reconnect.
+   */
+  private static async buildConnection(
+    storage: SqliteStorage | MemoryStorage,
+    mode: CommerceMode,
+  ): Promise<{ client: Client; local: KaprukaLocal }> {
     const local = new KaprukaLocal({
       mock: mode === 'mock',
       storage,
@@ -207,22 +245,154 @@ export class KaprukaAdapter implements CommercePort {
     const client = new Client({ name: 'kapruka-agent', version: '0.1.0' });
     await client.connect(clientTransport);
 
-    const adapter = new KaprukaAdapter(client, mode);
-
     // R3 fix: warm up the connection (and isOfficialServer detection) before
     // any real calls are made. Uses search_products (not list_categories) —
     // the live server returns non-JSON for list_categories. The very first
     // call on a cold connection always throws here (the SDK checks
     // isOfficialServer before connect() has run, so it picks the wrong
     // response-parsing path) — that's expected and fine: its only job is to
-    // force the connection so isOfficialServer is correct for every call after it.
+    // force the connection so isOfficialServer is correct for every call after
+    // it. Applies to both the initial connection (create()) and any rebuilt
+    // one (reconnect()) — same cold-start race either way.
     try {
-      await adapter.callTool(TOOL_NAMES.search_products, { q: 'cake' });
+      await client.callTool(
+        { name: TOOL_NAMES.search_products, arguments: { q: 'cake' } },
+        undefined,
+        { signal: AbortSignal.timeout(TOOL_TIMEOUT_MS) },
+      );
     } catch (err) {
-      logger.info({ err: toError(err).message }, 'kapruka warm-up call failed (expected on cold connection)');
+      const e = toError(err);
+      logger.warn(
+        { err: e.message, errName: e.name, errCode: (e as NodeJS.ErrnoException).code },
+        'warm-up call failed (expected on cold connection)',
+      );
+    }
+
+    return { client, local };
+  }
+
+  static async create(mode: CommerceMode): Promise<KaprukaAdapter> {
+    const storage = mode === 'live' ? await SqliteStorage.create(getCartDbPath()) : new MemoryStorage();
+    const { client, local } = await KaprukaAdapter.buildConnection(storage, mode);
+    const adapter = new KaprukaAdapter(client, local, storage, mode);
+
+    // Verification call — connection is proven healthy if this succeeds at
+    // all (a genuinely dead connection/transport throws here). Deliberately
+    // NOT wrapped in try/catch: if it throws, it propagates out of create()
+    // so getAdapter() never caches a broken instance.
+    const verifyRaw = await adapter.callTool<SearchResult>(TOOL_NAMES.search_products, { q: 'test' });
+
+    // Normalizer check is diagnostic only — a healthy connection that returns
+    // a shape the normalizer doesn't like shouldn't fail create() over it.
+    try {
+      normalizeSearchResult(verifyRaw);
+    } catch (parseErr) {
+      logger.warn(
+        { err: toError(parseErr).message, rawKeys: Object.keys(verifyRaw ?? {}) },
+        'verification response parsed but normalizer rejected it — connection is healthy, normalizer may need attention',
+      );
     }
 
     return adapter;
+  }
+
+  /**
+   * Rebuilds the local server + transport + client in place, preserving
+   * `this` identity — callers that captured this adapter instance (route.ts,
+   * reactiveTurn.ts hold one per request) keep a working reference after a
+   * reconnect instead of pointing at an abandoned object. Storage (and so
+   * cart state) is reused, not rebuilt.
+   *
+   * The singleton adapter is shared across concurrent requests (a chat POST
+   * and a debounced reactive-cart-action can both be mid-call at once), so
+   * two callers can hit retry-exhaustion together. Without dedup, both would
+   * build their own replacement connection and tear down whatever the other
+   * just installed. reconnectInFlight makes concurrent callers await the
+   * same rebuild instead of racing.
+   *
+   * This does NOT protect an unrelated in-flight call on the old connection
+   * from being aborted by the teardown below — that call's own retry loop
+   * will pick up the new connection and self-heal, just with an extra failed
+   * attempt. Accepted tradeoff; a full request-queue lock was judged overkill
+   * here.
+   */
+  private async reconnect(): Promise<void> {
+    if (this.reconnectInFlight) {
+      return this.reconnectInFlight;
+    }
+
+    const doReconnect = async (): Promise<void> => {
+      const oldLocal = this.local;
+      const oldClient = this.client;
+
+      const { client, local } = await KaprukaAdapter.buildConnection(this.storage, this.mode);
+      this.client = client;
+      this.local = local;
+
+      await oldLocal.shutdown().catch((err: unknown) => {
+        logger.warn({ err: toError(err).message }, 'error shutting down previous kapruka session during reconnect');
+      });
+      await oldClient.close().catch((err: unknown) => {
+        logger.warn({ err: toError(err).message }, 'error closing previous kapruka client during reconnect');
+      });
+    };
+
+    this.reconnectInFlight = doReconnect().finally(() => {
+      this.reconnectInFlight = null;
+    });
+    return this.reconnectInFlight;
+  }
+
+  /** Best-effort teardown — used by adapters/index.ts's resetAdapter(). */
+  async shutdown(): Promise<void> {
+    await this.local.shutdown().catch((err: unknown) => {
+      logger.warn({ err: toError(err).message }, 'error shutting down kapruka session');
+    });
+    await this.client.close().catch((err: unknown) => {
+      logger.warn({ err: toError(err).message }, 'error closing kapruka client');
+    });
+  }
+
+  /**
+   * Parses a raw MCP callTool result into T, throwing KaprukaError for the
+   * two known error shapes. Shared by callTool, callToolWithRaw, and each
+   * one's post-reconnect single retry.
+   */
+  private parseToolResult<T>(name: string, result: unknown): { parsed: T; text: string } {
+    const text = extractToolText(result);
+    if (text.startsWith('MCP error') || text.startsWith('Error')) {
+      throw new KaprukaError({
+        tool: name,
+        message: text.slice(0, 300),
+        suggestion: 'Live server error — may be rate limited or temporarily unavailable',
+      });
+    }
+
+    const parsed: unknown = JSON.parse(text);
+
+    if (isErrorPayload(parsed)) {
+      throw new KaprukaError({ tool: name, message: parsed.error, suggestion: parsed.suggestion });
+    }
+
+    return { parsed: parsed as T, text };
+  }
+
+  /**
+   * After retries are exhausted on a non-request-level error (network/session
+   * death, not bad input), rebuild the connection once and retry the call a
+   * single time. hasAttemptedReconnect (scoped to the calling callTool/
+   * callToolWithRaw invocation) prevents looping this more than once per call.
+   * Returns the successful result, or throws (caller falls through to its
+   * existing exhausted-retries throw).
+   */
+  private async reconnectAndRetryOnce<T>(name: string, args: Record<string, unknown>): Promise<{ parsed: T; text: string }> {
+    await this.reconnect();
+    const result = await this.client.callTool(
+      { name, arguments: args },
+      undefined,
+      { signal: AbortSignal.timeout(TOOL_TIMEOUT_MS) },
+    );
+    return this.parseToolResult<T>(name, result);
   }
 
   // -------------------------------------------------------------------------
@@ -231,6 +401,7 @@ export class KaprukaAdapter implements CommercePort {
   private async callTool<T>(name: string, args: Record<string, unknown>): Promise<T> {
     const start = Date.now();
     let lastError: unknown;
+    let hasAttemptedReconnect = false;
 
     for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
       try {
@@ -240,23 +411,10 @@ export class KaprukaAdapter implements CommercePort {
           { signal: AbortSignal.timeout(TOOL_TIMEOUT_MS) },
         );
 
-        const text = extractToolText(result);
-        if (text.startsWith('MCP error') || text.startsWith('Error')) {
-          throw new KaprukaError({
-            tool: name,
-            message: text.slice(0, 300),
-            suggestion: 'Live server error — may be rate limited or temporarily unavailable',
-          });
-        }
-
-        const parsed: unknown = JSON.parse(text);
-
-        if (isErrorPayload(parsed)) {
-          throw new KaprukaError({ tool: name, message: parsed.error, suggestion: parsed.suggestion });
-        }
+        const { parsed } = this.parseToolResult<T>(name, result);
 
         logger.info({ tool: name, args, durationMs: Date.now() - start }, 'kapruka tool call succeeded');
-        return parsed as T;
+        return parsed;
       } catch (err) {
         lastError = err;
 
@@ -269,6 +427,23 @@ export class KaprukaAdapter implements CommercePort {
           'retrying kapruka tool call',
         );
         await delay(RETRY_DELAYS_MS[attempt]);
+      }
+    }
+
+    // Retries exhausted (or a single non-retryable, non-KaprukaError failure).
+    // If the problem doesn't look like it's about the request content itself,
+    // it's plausibly a dead session/transport — rebuild the connection and
+    // give the call one more shot before giving up for good.
+    if (!isRequestLevelError(lastError) && !hasAttemptedReconnect) {
+      hasAttemptedReconnect = true;
+      logger.warn({ tool: name, err: toError(lastError).message }, 'non-request error after retry exhaustion — rebuilding connection');
+      try {
+        const { parsed } = await this.reconnectAndRetryOnce<T>(name, args);
+        logger.info({ tool: name, args, durationMs: Date.now() - start }, 'kapruka tool call succeeded after reconnect');
+        return parsed;
+      } catch (retryErr) {
+        lastError = retryErr;
+        logger.error({ tool: name, err: toError(retryErr).message }, 'reconnect did not resolve the failure');
       }
     }
 
@@ -287,6 +462,7 @@ export class KaprukaAdapter implements CommercePort {
   ): Promise<{ parsed: T; rawText: string }> {
     const start = Date.now();
     let lastError: unknown;
+    let hasAttemptedReconnect = false;
 
     for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
       try {
@@ -296,23 +472,10 @@ export class KaprukaAdapter implements CommercePort {
           { signal: AbortSignal.timeout(TOOL_TIMEOUT_MS) },
         );
 
-        const text = extractToolText(result);
-        if (text.startsWith('MCP error') || text.startsWith('Error')) {
-          throw new KaprukaError({
-            tool: name,
-            message: text.slice(0, 300),
-            suggestion: 'Live server error — may be rate limited or temporarily unavailable',
-          });
-        }
-
-        const parsed: unknown = JSON.parse(text);
-
-        if (isErrorPayload(parsed)) {
-          throw new KaprukaError({ tool: name, message: parsed.error, suggestion: parsed.suggestion });
-        }
+        const { parsed, text } = this.parseToolResult<T>(name, result);
 
         logger.info({ tool: name, args, durationMs: Date.now() - start }, 'kapruka tool call succeeded');
-        return { parsed: parsed as T, rawText: text };
+        return { parsed, rawText: text };
       } catch (err) {
         lastError = err;
 
@@ -325,6 +488,19 @@ export class KaprukaAdapter implements CommercePort {
           'retrying kapruka tool call',
         );
         await delay(RETRY_DELAYS_MS[attempt]);
+      }
+    }
+
+    if (!isRequestLevelError(lastError) && !hasAttemptedReconnect) {
+      hasAttemptedReconnect = true;
+      logger.warn({ tool: name, err: toError(lastError).message }, 'non-request error after retry exhaustion — rebuilding connection');
+      try {
+        const { parsed, text } = await this.reconnectAndRetryOnce<T>(name, args);
+        logger.info({ tool: name, args, durationMs: Date.now() - start }, 'kapruka tool call succeeded after reconnect');
+        return { parsed, rawText: text };
+      } catch (retryErr) {
+        lastError = retryErr;
+        logger.error({ tool: name, err: toError(retryErr).message }, 'reconnect did not resolve the failure');
       }
     }
 
