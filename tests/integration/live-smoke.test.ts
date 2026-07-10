@@ -14,7 +14,7 @@ import { createTools } from '@/agent/tools.js';
 import { RenderEventEmitter } from '@/agent/events.js';
 import { resolveCityQuery } from '@/agent/cityResolver.js';
 import type { RenderEvent, UIProduct } from '@/agent/state.js';
-import type { CommercePort } from '@/core/ports/commerce.port.js';
+import type { CommercePort, CreateOrderRequest } from '@/core/ports/commerce.port.js';
 
 const TIMEOUT = 30_000;
 
@@ -199,13 +199,19 @@ describe('Live System Integration', () => {
   });
 
   describe('Order Flow', () => {
-    test('create_order succeeds with first-party product', async () => {
+    // Does NOT call adapter.createOrder() — every push runs this suite in CI
+    // (see .github/workflows/ci.yml), and createOrder places a real, payable
+    // order against production Kapruka every time it succeeds. This test
+    // verifies the request we'd build is well-formed (real product ID/price
+    // from a live search, valid phone format, tomorrow's date) without
+    // actually submitting it.
+    test('create_order request is well-formed', async () => {
       const adapter = await getAdapter();
       const products = await searchAndHydrate(adapter, 'birthday cake');
       const product = firstMatching(products, 'CAKE00KA');
       expect(product, 'expected a CAKE00KA* result for "birthday cake"').toBeDefined();
 
-      const order = await adapter.createOrder({
+      const request: CreateOrderRequest = {
         cart: [{ product_id: product!.id, quantity: 1 }],
         recipient: {
           name: 'Nimal Silva',
@@ -215,13 +221,22 @@ describe('Live System Integration', () => {
         },
         delivery: { date: tomorrowISO() },
         sender: { name: 'Kamal Perera', phone: '0719876543' },
-      });
+      };
 
-      console.log(`created order ${order.id} — total=LKR ${order.total}, checkoutUrl=${order.checkoutUrl}`);
-      expect(order.id).toBeTruthy();
-      expect(order.checkoutUrl).toBeTruthy();
-      expect(order.checkoutUrl ?? '').toMatch(/^https:\/\//);
-      expect(order.total ?? 0).toBeGreaterThan(0);
+      console.log(`well-formed createOrder request for ${product!.id}: ${JSON.stringify(request)}`);
+
+      expect(request.cart.length).toBeGreaterThan(0);
+      expect(request.cart[0].product_id).toBe(product!.id);
+
+      expect(request.recipient.name).toBeTruthy();
+      expect(request.recipient.phone).toMatch(/^(\+94|0)7\d{8}$/);
+      expect(request.recipient.address).toBeTruthy();
+      expect(request.recipient.city).toBeTruthy();
+
+      expect(request.delivery.date).toBe(tomorrowISO());
+      expect(request.delivery.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+      expect(request.sender.name).toBeTruthy();
     }, TIMEOUT);
   });
 
