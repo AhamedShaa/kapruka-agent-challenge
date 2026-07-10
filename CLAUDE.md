@@ -190,6 +190,63 @@ different copies of `@langchain/core`, so cross-package `instanceof` checks retu
 - Avoid `msg.role` — not part of the LangChain BaseMessage contract.
 
 ---
+
+## Live-Verified Architecture Notes
+
+Data flow: `KaprukaAdapter` (only file touching `kapruka-mcp`) → normalizers
+(`src/adapters/normalizers/`, raw SDK shapes → `Normalized*` types) → agent
+tools (`src/agent/tools.ts`, `CommercePort` → render events + tool-message
+text) → `RenderEventEmitter` → SSE frames (`app/api/chat/route.ts`).
+
+**Page resolver — critical fallback for partner products.** `get_product`
+404s for every partner-catalog (`EF_PC_*`) product, 100% of the time (see
+docs/AGENT_BRIEFING.md). `src/adapters/image-resolver.ts`'s
+`resolveProductFromPage` is what keeps these products usable: it fetches the
+product's own detail page (`NormalizedProduct.product_page_url`, captured
+from the search result before Decision C nulls the raw `image_url`) and
+extracts image/description/vendor/category from its JSON-LD `Product`
+schema, falling back to og:image/og:description meta tags. Without it,
+partner products would show a placeholder icon and an empty detail drawer
+forever, even though they're fully orderable.
+
+**Every `adapter.getProduct()` call site and its 404 handling** (audit as of
+this note; re-check with `grep -rn "\.getProduct("` if this drifts):
+- `src/agent/tools.ts` `addToCart` — falls back to LLM-supplied name/price.
+- `src/agent/tools.ts` `hydrateAndEmitProducts` — falls back to the page
+  resolver above.
+- `app/api/cart/direct-action/route.ts` — falls back to client-supplied
+  name/price (same pattern as `addToCart`).
+- `app/api/products/[productId]/route.ts` — falls back to the page resolver,
+  returning a `partial` shape instead of a bare 502.
+- `src/adapters/kapruka.adapter.ts` (search hydration) — `Promise.allSettled`,
+  degrades silently, no page-resolver fallback at this layer.
+- `app/api/session/history/route.ts` (session reconstruction, two call
+  sites) — `Promise.allSettled` / `.catch(() => null)`; the product is
+  silently dropped from reconstructed history rather than falling back —
+  acceptable here since it's a reconstruction nicety, not the live purchase
+  path.
+- `src/agent/tools.ts` `getProduct` (the chat-facing tool, user asks for
+  product detail by ID) — **no fallback**. Throws straight through;
+  `runTool` turns it into an `ERROR` render event instead of a crash, but
+  the user gets an error message instead of a product detail for a partner
+  product. Known gap, not yet fixed.
+
+**Two cart-add paths, same fallback pattern, kept in sync manually**:
+`src/agent/tools.ts`'s `addToCart` tool (chat-driven) and
+`app/api/cart/direct-action/route.ts` (product-card "add to cart" button).
+Both accept optional `name`/`price`, skip `getProduct` when both are
+present, and reject a non-positive resolved price rather than sending an
+invalid value the live `add_to_cart` API rejects anyway. If you change one,
+change the other.
+
+**Known limitations**:
+- `trackOrder` fails immediately after `createOrder` succeeds (order not
+  found, both ID formats tried) — unresolved, see docs/AGENT_BRIEFING.md.
+- `listDeliveryCities` does substring matching server-side, not prefix
+  matching — root cause of the still-open "Galle resolves ambiguous"
+  bug (documented as `test.skip` in `tests/integration/live-smoke.test.ts`).
+
+---
 ---
 ## Phase Build Log
 Update this section after each phase is complete.

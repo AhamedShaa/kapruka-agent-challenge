@@ -39,6 +39,59 @@ mock schema, tool descriptions, or documentation):
 - MOCK MODE is not used in production. Mock schema differs from live in 
   ways that mislead debugging. Never use mock code as evidence of live 
   behavior.
+- Product ID prefixes correlate with catalog origin, confirmed across
+  multiple audit sessions: `CAKE00KA*`, `FLOWERS00T*`, `SOFTTOY*` (and
+  similar) are first-party — `get_product` succeeds with full detail
+  including a real CDN image. `EF_PC_*` ("External Partner Catalog") is
+  partner-catalog — `get_product` 404s 100% of the time sampled, for every
+  `EF_PC_*` ID across every category (flowers, chocolates, electronics,
+  home). This is systematic and prefix-correlated, not intermittent
+  flakiness. Do not special-case on the prefix in code, though — treat
+  get_product failure as the generic signal (see image-resolver.ts), since
+  new catalogs/prefixes can appear without notice.
+- `get_product` only works for first-party SKUs (see prefix note above).
+  Partner-catalog products can still be added to cart and ordered — the
+  404 is specific to the detail-lookup endpoint, not a sign the product is
+  untransactable.
+- `search_products`' `image_url` field is **always** a product detail page
+  link (`/buyonline/.../kid/...`), never a real image — for every catalog,
+  not just partner ones. The normalizer deliberately discards it into
+  `product_page_url` and nulls `image_url` (Decision C). Only `get_product`
+  ever returns a real CDN image URL.
+- Every product detail page (reachable via `product_page_url`) carries a
+  JSON-LD `<script type="application/ld+json">` block with `@type: Product`
+  — confirmed live across every failing catalog tested (EF_PC_*,
+  CHOCOLATES0*) to carry a clean image, full description, brand, and
+  category, with no HTML-tag stripping needed. og:image/og:description meta
+  tags are a regex fallback for the rare page missing JSON-LD.
+  `src/adapters/image-resolver.ts`'s `resolveProductFromPage` implements
+  this: fetch the page once, try JSON-LD first, fall back to meta tags,
+  cache the resolved shape (or `null` on failure) per product ID for the
+  process lifetime.
+- `listDeliveryCities` does server-side **substring** matching, not prefix
+  matching — e.g. "galle" matches "Ke**galle**" as well as "Galle" itself,
+  which is the root cause of the Galle-ambiguity bug (see IN PROGRESS
+  below). Query "Colombo" returns all 15 Colombo sub-areas, all sharing id
+  "COLOMBO" (id collision) — default to "Colombo 03" when the user just
+  says "Colombo".
+- `createOrder`'s top-level SDK-parsed fields (`orderId`, `checkoutUrl`,
+  `total`, `items`) come back empty/zero (`""`, `"LKR 0"`, `[]`) even on a
+  call that genuinely succeeded and created a real, payable order — the
+  real ID, total, and checkout URL exist only inside `_rawMarkdown`.
+  `KaprukaAdapter.createOrder` always runs `normalizeOrderFromMarkdown`
+  against `_rawMarkdown` and prefers its extraction over the raw top-level
+  fields; without this, every live order would normalize to a valueless,
+  ID-less `NormalizedOrder`. Confirmed in docs/LIVE_SYSTEM_AUDIT.md Section
+  1m/2.
+- `trackOrder` fails immediately (within 1-2 minutes) after order creation,
+  with both the real order ID and the checkout-URL fragment tried:
+  `{"error":"Order \"...\" not found"}`. Either there's an indexing delay
+  server-side before an order becomes trackable, or `track_order` is broken
+  for orders created through this integration path — not resolved (no raw
+  successful `track_order` response has ever been captured to compare
+  against). Also note: `KaprukaAdapter.trackOrder` doesn't do the
+  `_rawMarkdown` extraction `createOrder` does — an asymmetry that's never
+  been audited because no successful response exists to audit it against.
 
 Working principles for this project
   - Audit before act. No fix ships without empirical evidence (probe script 
