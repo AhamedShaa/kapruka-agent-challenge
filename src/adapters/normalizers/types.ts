@@ -11,6 +11,16 @@ export interface NormalizedProduct {
   currency: string;
   image_url: string | null;
   product_url: string | null;
+  /**
+   * The product's /buyonline/.../kid/... detail page — NOT an image. On the
+   * search path this is the raw SDK's own `image_url` field, which is
+   * actually a page link mislabeled as an image (Decision C nulls the real
+   * `image_url` field because of this). Kept here, separately, so a
+   * get_product failure has something to fall back to for image resolution
+   * (see src/adapters/image-resolver.ts) without resurrecting the mislabeled
+   * value into `image_url` itself.
+   */
+  product_page_url: string | null;
   category: string | null;
   description: string | null;
   visual_description: string | null;

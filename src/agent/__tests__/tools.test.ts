@@ -20,6 +20,7 @@ function makeProduct(id: string, name: string, price: number): NormalizedProduct
     currency: 'LKR',
     image_url: null,
     product_url: null,
+    product_page_url: null,
     category: null,
     description: null,
     visual_description: null,

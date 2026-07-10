@@ -107,6 +107,7 @@ function buildProduct(
     currency: base.currency,
     image_url: fields.image_url.value as string | null,
     product_url: fields.product_url.value as string | null,
+    product_page_url: fields.product_page_url.value as string | null,
     category: fields.category.value as string | null,
     description: fields.description.value as string | null,
     visual_description: fields.visual_description.value as string | null,
@@ -136,6 +137,11 @@ export function normalizeSearchProduct(raw: Product, rawText?: string): Normaliz
       // Decision C: search results never carry a real image — hard rule, no heuristic.
       image_url: absent,
       product_url: productUrl !== null ? present(productUrl) : absent,
+      // The raw SDK image_url IS this same page link (confirmed empirically,
+      // docs/LIVE_SYSTEM_AUDIT.md) — captured here under its own name instead
+      // of being discarded, so a get_product failure has a page to fall back
+      // to for og:image resolution.
+      product_page_url: raw.image_url ? present(raw.image_url) : absent,
       category: raw.category ? present(raw.category) : absent,
       // Decision A/B context: search responses hardcode description to "" — always null.
       description: absent,
@@ -167,6 +173,10 @@ export function normalizeGetProductResult(raw: Product, rawText?: string): Norma
       price: raw.price !== 0 ? present(raw.price) : absent,
       image_url: raw.image_url ? present(raw.image_url) : absent,
       product_url: productUrl !== null ? present(productUrl) : absent,
+      // Not needed on this path (get_product already succeeded, so there's
+      // no fallback to resolve) — populated for type consistency using the
+      // same "[View on Kapruka]" link product_url already extracted.
+      product_page_url: productUrl !== null ? present(productUrl) : absent,
       category: raw.category ? present(raw.category) : absent,
       // Decision B (LOCKED): preserve description exactly as the SDK parser returns it, truncation included.
       description: raw.description ? present(raw.description) : absent,

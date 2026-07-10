@@ -16,6 +16,7 @@ import type { CustomerMemoryStore } from '@/lib/customerMemory.js';
 import { logger } from '@/lib/logger.js';
 import { searchFAQ } from '@/lib/faq.js';
 import { withCartLock } from '@/adapters/cartLock.js';
+import { resolveProductImage } from '@/adapters/image-resolver.js';
 import { storeProductImage, enrichCartItems } from '@/lib/productImageCache.js';
 import { resolveCityQuery } from './cityResolver.js';
 import { toUserSafeMessage } from './errorFormatter.js';
@@ -52,16 +53,31 @@ async function hydrateAndEmitProducts(
   productIndex: Array<{ position: number; id: string; price: number }>;
 }> {
   const hydrateResults = await Promise.allSettled(
-    products.map((p) => adapter.getProduct(p.id)),
+    products.map(async (p): Promise<NormalizedProduct | null> => {
+      try {
+        return await adapter.getProduct(p.id);
+      } catch {
+        // get_product has no detail record for this product (confirmed live:
+        // ~48% of results, not limited to any one ID prefix — see
+        // docs/LIVE_SYSTEM_AUDIT.md). Fall back to scraping the product's own
+        // detail page (already known from the search result) for its
+        // og:image tag, rather than a bare placeholder.
+        if (!p.product_page_url) return null;
+        const imageUrl = await resolveProductImage(p.product_page_url, p.id);
+        return imageUrl ? ({ ...p, image_url: imageUrl } as NormalizedProduct) : null;
+      }
+    }),
   );
   const readyProducts = products.map((p, i) => {
     const r = hydrateResults[i];
-    if (r.status !== 'fulfilled') return p;
-    // Overlay all non-null fields from getProduct onto the search result.
-    // getProduct is the authoritative source: it carries image_url, vendor,
-    // weight, description, product_url, visual_description, and the correct
-    // category (search path returns wrong category for partner-catalog items).
-    // Search-path values are kept as fallback only where getProduct returned null.
+    if (r.status !== 'fulfilled' || r.value === null) return p;
+    // Overlay all non-null fields onto the search result. Either the full
+    // getProduct result (authoritative — carries image_url, vendor, weight,
+    // description, product_url, visual_description, and the correct category)
+    // or, on the og:image fallback path, just the resolved image_url — the
+    // rest of r.value is still p's own original fields (spread unchanged),
+    // so this overlay is a no-op for anything the fallback didn't touch.
+    // Search-path values are kept as fallback only where the overlay is null.
     return {
       ...p,
       ...Object.fromEntries(
@@ -377,22 +393,54 @@ export function createTools(
     name: 'addToCart',
     description:
       'Call this when the user says they want to add an item to their cart, buy something, ' +
-      'or proceed with a product. You only need the product id — name and price are looked up ' +
-      'server-side from the canonical product record, never taken from your own memory.',
+      'or proceed with a product. Pass the name and price exactly as shown in the search ' +
+      'results or product detail the user already saw — this lets partner-catalog products ' +
+      '(whose full detail record isn\'t available server-side) still be added. If you don\'t ' +
+      'have both, omit them and the canonical values will be looked up server-side instead.',
     schema: z.object({
       productId: z.string(),
+      name: z.string().optional().describe('Product name from the search results or product detail already shown to the user.'),
+      price: z.number().optional().describe('Product price from the search results or product detail already shown to the user.'),
       quantity: z.number().default(1),
     }),
-    func: async ({ productId, quantity }) =>
+    func: async ({ productId, name, price, quantity }) =>
       runTool('addToCart', emitter, async () => {
-        // Canonical name/price, never LLM-supplied — closes off the class of bug
-        // where a hallucinated or stale price/name gets written into the cart.
-        const product = await adapter.getProduct(productId);
-        const name = product.name ?? productId;
-        const price = product.price ?? 0;
-        storeProductImage(productId, product.image_url);
+        let resolvedName = name;
+        let resolvedPrice = price;
 
-        const cart = await withCartLock(() => adapter.addToCart(productId, name, price, quantity));
+        // The LLM already has name/price from the search results it just showed the
+        // user — skip the getProduct round-trip entirely when both are present. This
+        // also makes partner-catalog products (EF_PC_* — get_product always 404s for
+        // these, confirmed in docs/LIVE_SYSTEM_AUDIT.md) addable at all, since the old
+        // unconditional getProduct pre-fetch blocked them before the cart mutation
+        // was ever attempted.
+        if (resolvedName === undefined || resolvedPrice === undefined) {
+          try {
+            const product = await adapter.getProduct(productId);
+            resolvedName = resolvedName ?? product.name ?? productId;
+            resolvedPrice = resolvedPrice ?? product.price ?? 0;
+            storeProductImage(productId, product.image_url);
+          } catch (err) {
+            // getProduct failed (e.g. a partner product) — don't block the add,
+            // fall back to whatever the LLM supplied.
+            logger.info({ tool: 'addToCart', productId, err: toMessage(err) }, 'getProduct fallback failed, using LLM-supplied values');
+          }
+        }
+
+        // Never write an empty/whitespace name into the cart — fall back to the
+        // product id, which is always a stable, real identifier.
+        const finalName = resolvedName && resolvedName.trim() !== '' ? resolvedName : productId;
+
+        // The live add_to_cart tool rejects price <= 0 — this only happens when
+        // BOTH the LLM omitted price AND getProduct failed (e.g. a partner
+        // product where the LLM also forgot to pass the price it was shown).
+        // Ask for it explicitly rather than sending an invalid value the API
+        // will reject anyway.
+        if (resolvedPrice === undefined || resolvedPrice <= 0) {
+          return "I don't have a price for that item — could you tell me the price shown, or ask me to look it up again?";
+        }
+
+        const cart = await withCartLock(() => adapter.addToCart(productId, finalName, resolvedPrice, quantity));
         emitter.emitRender({
           type: 'CART',
           items: enrichCartItems(cart.items.map(normalizedToUICartItem)),
@@ -400,7 +448,7 @@ export function createTools(
           itemCount: cart.itemCount,
         });
 
-        return `Added ${quantity}x ${name} (LKR ${price}) to cart. Cart: ${cart.itemCount} item(s), LKR ${cart.total} total.`;
+        return `Added ${quantity}x ${finalName} (LKR ${resolvedPrice}) to cart. Cart: ${cart.itemCount} item(s), LKR ${cart.total} total.`;
       }),
   });
 

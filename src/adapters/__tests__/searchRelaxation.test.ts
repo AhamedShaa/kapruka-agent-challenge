@@ -10,6 +10,7 @@ function makeProduct(id: string, name: string, price: number, in_stock: import('
     currency: 'LKR',
     image_url: null,
     product_url: null,
+    product_page_url: null,
     category: null,
     description: null,
     visual_description: null,
