@@ -16,7 +16,7 @@ import type { CustomerMemoryStore } from '@/lib/customerMemory.js';
 import { logger } from '@/lib/logger.js';
 import { searchFAQ } from '@/lib/faq.js';
 import { withCartLock } from '@/adapters/cartLock.js';
-import { resolveProductImage } from '@/adapters/image-resolver.js';
+import { resolveProductFromPage } from '@/adapters/image-resolver.js';
 import { storeProductImage, enrichCartItems } from '@/lib/productImageCache.js';
 import { resolveCityQuery } from './cityResolver.js';
 import { toUserSafeMessage } from './errorFormatter.js';
@@ -61,10 +61,19 @@ async function hydrateAndEmitProducts(
         // ~48% of results, not limited to any one ID prefix — see
         // docs/LIVE_SYSTEM_AUDIT.md). Fall back to scraping the product's own
         // detail page (already known from the search result) for its
-        // og:image tag, rather than a bare placeholder.
+        // JSON-LD/og:image data — image AND description AND vendor AND
+        // category from the one fetch, rather than a bare placeholder.
         if (!p.product_page_url) return null;
-        const imageUrl = await resolveProductImage(p.product_page_url, p.id);
-        return imageUrl ? ({ ...p, image_url: imageUrl } as NormalizedProduct) : null;
+        const pageData = await resolveProductFromPage(p.product_page_url, p.id);
+        return pageData
+          ? ({
+              ...p,
+              image_url: pageData.image_url ?? p.image_url,
+              description: pageData.description ?? p.description,
+              vendor: pageData.vendor ?? p.vendor,
+              category: pageData.category ?? p.category,
+            } as NormalizedProduct)
+          : null;
       }
     }),
   );
