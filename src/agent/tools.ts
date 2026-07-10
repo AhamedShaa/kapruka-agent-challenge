@@ -77,6 +77,20 @@ async function hydrateAndEmitProducts(
       }
     }),
   );
+
+  const succeeded = hydrateResults.filter((r) => r.status === 'fulfilled' && r.value !== null).length;
+  const failed = products.length - succeeded;
+  logger.info(
+    {
+      query,
+      total: products.length,
+      hydrated: succeeded,
+      fallback: failed,
+      pct: Math.round((succeeded / products.length) * 100),
+    },
+    'product hydration summary',
+  );
+
   const readyProducts = products.map((p, i) => {
     const r = hydrateResults[i];
     if (r.status !== 'fulfilled' || r.value === null) return p;
