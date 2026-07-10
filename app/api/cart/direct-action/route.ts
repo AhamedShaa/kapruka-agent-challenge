@@ -15,6 +15,8 @@ const directActionSchema = z.object({
   action: z.enum(['add', 'remove', 'updateQuantity']),
   productId: z.string().min(1),
   quantity: z.number().int().min(0).optional(),
+  name: z.string().optional(),
+  price: z.number().optional(),
 });
 
 function toResponse(cart: NormalizedCartView): { items: ReturnType<typeof normalizedToUICartItem>[]; total: number; itemCount: number } {
@@ -42,7 +44,7 @@ export async function POST(request: Request): Promise<Response> {
   // not session-scoped, same as the agent's own addToCart/getCart tools) — it's
   // used below to target the right thread_id when scheduling the debounced
   // reactive-turn notification.
-  const { sessionId, action, productId, quantity } = parsed.data;
+  const { sessionId, action, productId, quantity, name, price } = parsed.data;
 
   try {
     const adapter = await getAdapter();
@@ -55,13 +57,33 @@ export async function POST(request: Request): Promise<Response> {
     // atomicity of its own).
     const result = await withCartLock(async (): Promise<NormalizedCartView> => {
       if (action === 'add') {
-        // The request body intentionally carries no name/price (per spec) — look
-        // the product up server-side rather than trusting client-supplied price.
-        const product = await adapter.getProduct(productId);
-        const name = product.name ?? productId;
-        const price = product.price ?? 0;
-        storeProductImage(productId, product.image_url);
-        return adapter.addToCart(productId, name, price, quantity ?? 1);
+        let resolvedName = name;
+        let resolvedPrice = price;
+
+        // The client (product card) already has name/price from the search
+        // results or product detail it rendered — skip the getProduct round-trip
+        // entirely when both are present. This also makes partner-catalog
+        // products (get_product 404s for these, confirmed in
+        // docs/LIVE_SYSTEM_AUDIT.md) addable via the product card at all, since
+        // the old unconditional getProduct pre-fetch blocked them before the
+        // cart mutation was ever attempted. Same pattern as tools.ts addToCart.
+        if (resolvedName === undefined || resolvedPrice === undefined) {
+          try {
+            const product = await adapter.getProduct(productId);
+            resolvedName = resolvedName ?? product.name ?? productId;
+            resolvedPrice = resolvedPrice ?? product.price ?? 0;
+            storeProductImage(productId, product.image_url);
+          } catch (err) {
+            logger.info({ action, productId, err: err instanceof Error ? err.message : String(err) }, 'getProduct fallback failed, using client-supplied values');
+          }
+        }
+
+        const finalName = resolvedName && resolvedName.trim() !== '' ? resolvedName : productId;
+        if (resolvedPrice === undefined || resolvedPrice <= 0) {
+          throw new Error('No valid price available for this product — pass name/price from the card, or try again.');
+        }
+
+        return adapter.addToCart(productId, finalName, resolvedPrice, quantity ?? 1);
       }
 
       // 'remove' and 'updateQuantity' have no direct primitive in the underlying
