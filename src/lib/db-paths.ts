@@ -43,6 +43,19 @@ export function getMemoryDbPath(): string {
   return memoryDbPath;
 }
 
+/**
+ * Treat kapruka-checkpoints.db (and its -shm/-wal companions) as ephemeral
+ * and rebuildable, not data worth protecting — it only holds LangGraph
+ * conversation-replay state, not orders or cart contents. Confirmed via a
+ * live audit (docs/LIVE_SYSTEM_AUDIT.md, Section 4d) that a corrupted copy
+ * of this file broke every chat turn with a "database disk image is
+ * malformed" SSE error, and that deleting all three files and letting them
+ * regenerate fixed it immediately with no code change. If persistent-disk
+ * backups are configured for DB_DIR on Render, exclude this file (or accept
+ * that a stale/corrupted backup of it may need to be deleted on restore) —
+ * unlike the cart/memory DBs in this same directory, losing it costs
+ * nothing but conversation history.
+ */
 export function getCheckpointDbPath(): string {
   if (checkpointDbPath === null) {
     const dbDir = process.env.DB_DIR ?? process.cwd();
