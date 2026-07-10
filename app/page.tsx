@@ -501,18 +501,48 @@ export default function Home(): React.JSX.Element {
     // Mutual exclusion: opening product detail closes the cart drawer
     setIsCartOpen(false);
     // Open immediately with the thin shape already in hand (good perceived
-    // performance), then replace with the full shape (real description) once
-    // the fetch resolves. Search results never carry a description — only
-    // getProduct does — so the thin shape alone would show an empty drawer.
+    // performance).
     setSelectedProduct(product);
 
-    fetch(`/api/products/${encodeURIComponent(product.id)}`)
+    // Hydration (search-time, or the get_product-failure fallback both now
+    // run) already populated description for most products by the time the
+    // user can click a card — skip the redundant re-fetch entirely when it
+    // did. Only products that bypassed hydration (e.g. recommendations,
+    // which don't hydrate) still need this fetch.
+    if (product.description) return;
+
+    const url = product.product_page_url
+      ? `/api/products/${encodeURIComponent(product.id)}?pageUrl=${encodeURIComponent(product.product_page_url)}`
+      : `/api/products/${encodeURIComponent(product.id)}`;
+
+    fetch(url)
       .then((res) => res.json())
-      .then((data: { ok: boolean; product?: UIProduct }) => {
+      .then((data: {
+        ok: boolean;
+        product?: UIProduct;
+        partial?: { image_url: string | null; description: string | null; vendor: string | null; category: string | null };
+      }) => {
         if (data.ok && data.product) {
-          const full = data.product as UIProduct;
+          // get_product succeeded — authoritative full replace.
+          const full = data.product;
           if (full.image_url) imageMapRef.current[full.id] = full.image_url;
           setSelectedProduct((current) => (current?.id === product.id ? full : current));
+        } else if (data.ok && data.partial) {
+          // get_product failed; the page-scrape fallback recovered some
+          // fields — merge onto the thin shape rather than replacing it.
+          const partial = data.partial;
+          if (partial.image_url) imageMapRef.current[product.id] = partial.image_url;
+          setSelectedProduct((current) =>
+            current?.id === product.id
+              ? {
+                  ...current,
+                  image_url: partial.image_url ?? current.image_url,
+                  description: partial.description ?? current.description,
+                  vendor: partial.vendor ?? current.vendor,
+                  category: partial.category ?? current.category,
+                }
+              : current,
+          );
         }
       })
       .catch(() => null);

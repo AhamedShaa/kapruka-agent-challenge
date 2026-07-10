@@ -23,6 +23,9 @@ export interface UIProduct {
   vendor?: string | null;
   weight?: string | null;
   international_shipping?: boolean | null;
+  /** The product's own detail page — used client-side to request the
+   *  og:image/JSON-LD fallback when get_product has no record for this id. */
+  product_page_url?: string | null;
 }
 
 export interface UICartItem {

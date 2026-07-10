@@ -24,6 +24,7 @@ export function normalizedToUIProduct(p: NormalizedProduct): UIProduct {
     vendor: p.vendor ?? null,
     weight: p.weight ?? null,
     international_shipping: p.international_shipping,
+    product_page_url: p.product_page_url ?? null,
   };
 }
 
