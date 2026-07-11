@@ -13,6 +13,7 @@ import { getMemoryStore } from '@/lib/customerMemory.js';
 import { createTools } from '@/agent/tools.js';
 import { RenderEventEmitter } from '@/agent/events.js';
 import { resolveCityQuery } from '@/agent/cityResolver.js';
+import { resolveProductFromPage } from '@/adapters/image-resolver.js';
 import type { RenderEvent, UIProduct } from '@/agent/state.js';
 import type { CommercePort, CreateOrderRequest } from '@/core/ports/commerce.port.js';
 
@@ -104,6 +105,30 @@ describe('Live System Integration', () => {
       for (const p of products) {
         expect(p.image_url, `${p.id} should have an image_url`).not.toBeNull();
       }
+    }, TIMEOUT);
+  });
+
+  describe('Product Details', () => {
+    test('partner product detail resolves via page fallback', async () => {
+      const adapter = await getAdapter();
+      const searchResult = await adapter.search('flowers');
+      const partner = searchResult.products.find((p) => p.id.startsWith('EF_PC_'));
+      expect(partner, 'expected an EF_PC_* result for "flowers"').toBeDefined();
+
+      // Every search result carries its own /buyonline/.../kid/... detail
+      // page URL, captured before Decision C nulls the raw image_url — see
+      // src/adapters/normalizers/types.ts:14-22.
+      const pageUrl = partner!.product_page_url ?? partner!.product_url;
+      expect(pageUrl, 'expected a product_page_url/product_url from search').toBeTruthy();
+
+      // get_product 404s for every EF_PC_* product, 100% of the time
+      // (docs/AGENT_BRIEFING.md:45-47).
+      await expect(adapter.getProduct(partner!.id)).rejects.toThrow();
+
+      const resolved = await resolveProductFromPage(pageUrl!, partner!.id);
+      expect(resolved, 'resolveProductFromPage should recover data from the page fallback').not.toBeNull();
+      expect(resolved!.image_url).toBeTruthy();
+      expect(resolved!.description).toBeTruthy();
     }, TIMEOUT);
   });
 

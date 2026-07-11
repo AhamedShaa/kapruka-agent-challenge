@@ -17,7 +17,7 @@ import { logger } from '@/lib/logger.js';
 import { searchFAQ } from '@/lib/faq.js';
 import { withCartLock } from '@/adapters/cartLock.js';
 import { resolveProductFromPage } from '@/adapters/image-resolver.js';
-import { storeProductImage, enrichCartItems } from '@/lib/productImageCache.js';
+import { storeProductImage, storeProductPageUrl, getProductPageUrl, enrichCartItems } from '@/lib/productImageCache.js';
 import { resolveCityQuery } from './cityResolver.js';
 import { toUserSafeMessage } from './errorFormatter.js';
 import type { RenderEventEmitter } from './events.js';
@@ -52,6 +52,16 @@ async function hydrateAndEmitProducts(
   readyProducts: NormalizedProduct[];
   productIndex: Array<{ position: number; id: string; price: number }>;
 }> {
+  // Cache every result's page URL up front — by the time a user says "tell me
+  // about product 3", the getProduct tool's own fallback (see below) can reach
+  // it even for products get_product 404s for. The URL can't be reconstructed
+  // from a productId alone (it embeds a server-generated name slug), so this
+  // is the only place it's ever captured.
+  for (const p of products) {
+    const pageUrl = p.product_page_url ?? p.product_url;
+    if (pageUrl) storeProductPageUrl(p.id, pageUrl);
+  }
+
   const hydrateResults = await Promise.allSettled(
     products.map(async (p): Promise<NormalizedProduct | null> => {
       try {
@@ -358,14 +368,61 @@ export function createTools(
     schema: z.object({ productId: z.string() }),
     func: async ({ productId }) =>
       runTool('getProduct', emitter, async () => {
-        const product = await adapter.getProduct(productId);
-        emitter.emitRender({ type: 'PRODUCT_DETAIL', product: normalizedToUIProduct(product) }, { defer: true });
+        try {
+          const product = await adapter.getProduct(productId);
+          emitter.emitRender({ type: 'PRODUCT_DETAIL', product: normalizedToUIProduct(product) }, { defer: true });
 
-        const description = product.description ? `${product.description.slice(0, 80)}. ` : '';
-        const vendorPart = product.vendor ? ` Vendor: ${product.vendor}.` : '';
-        const weightPart = product.weight ? ` Weight: ${product.weight}.` : '';
-        const urlPart = product.product_url ? ` View more details [here](${product.product_url}).` : '';
-        return `${product.name ?? 'Unnamed item'} — ${formatPrice(product.price)}. ${description}In stock: ${product.in_stock !== 'out_of_stock' ? 'yes' : 'no'}${product.in_stock === 'low_stock' ? ' (low)' : ''}.${vendorPart}${weightPart}${urlPart}`;
+          const description = product.description ? `${product.description.slice(0, 80)}. ` : '';
+          const vendorPart = product.vendor ? ` Vendor: ${product.vendor}.` : '';
+          const weightPart = product.weight ? ` Weight: ${product.weight}.` : '';
+          const urlPart = product.product_url ? ` View more details [here](${product.product_url}).` : '';
+          return `${product.name ?? 'Unnamed item'} — ${formatPrice(product.price)}. ${description}In stock: ${product.in_stock !== 'out_of_stock' ? 'yes' : 'no'}${product.in_stock === 'low_stock' ? ' (low)' : ''}.${vendorPart}${weightPart}${urlPart}`;
+        } catch (err) {
+          // get_product 404s for every EF_PC_* (partner-catalog) product,
+          // 100% of the time (docs/AGENT_BRIEFING.md) — fall back to scraping
+          // the product's own detail page, cached by hydrateAndEmitProducts
+          // above at search time. No cached URL, or the page resolver also
+          // failing, means this is genuinely unavailable — surface the
+          // original error rather than a synthesized one.
+          const pageUrl = getProductPageUrl(productId);
+          if (!pageUrl) throw err;
+
+          const resolved = await resolveProductFromPage(pageUrl, productId);
+          if (!resolved) throw err;
+
+          const fallbackProduct: NormalizedProduct = {
+            id: productId,
+            name: resolved.name ?? productId,
+            price: resolved.price,
+            currency: 'LKR',
+            image_url: resolved.image_url,
+            product_url: pageUrl,
+            product_page_url: pageUrl,
+            category: resolved.category,
+            description: resolved.description,
+            visual_description: null,
+            vendor: resolved.vendor,
+            weight: null,
+            // The page resolver only recovers stock status when the JSON-LD
+            // Offer carries it — genuinely unknown otherwise. Defaulting to
+            // 'in_stock' (rather than blocking) matches docs/AGENT_BRIEFING.md's
+            // note that partner-catalog products remain fully orderable even
+            // when get_product has no record of them.
+            in_stock: resolved.in_stock ?? 'in_stock',
+            international_shipping: null,
+          };
+          storeProductImage(productId, fallbackProduct.image_url);
+          emitter.emitRender(
+            { type: 'PRODUCT_DETAIL', product: normalizedToUIProduct(fallbackProduct) },
+            { defer: true },
+          );
+
+          const description = fallbackProduct.description ? `${fallbackProduct.description.slice(0, 80)}. ` : '';
+          const vendorPart = fallbackProduct.vendor ? ` Vendor: ${fallbackProduct.vendor}.` : '';
+          const priceNote = fallbackProduct.price === null ? ' (price not confirmed — check before ordering)' : '';
+          const stockNote = resolved.in_stock === null ? ' (stock status not confirmed)' : '';
+          return `${fallbackProduct.name} — ${formatPrice(fallbackProduct.price)}${priceNote}. ${description}${vendorPart}${stockNote}`;
+        }
       }),
   });
 

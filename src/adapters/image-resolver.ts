@@ -6,6 +6,7 @@ const FETCH_TIMEOUT_MS = 5_000;
 const OG_IMAGE_PATTERN = /<meta\s+property="og:image"\s+content="([^"]+)"/i;
 const OG_DESCRIPTION_PATTERN = /<meta\s+property="og:description"\s+content="([^"]+)"/i;
 const META_DESCRIPTION_PATTERN = /<meta\s+name="description"\s+content="([^"]+)"/i;
+const OG_TITLE_PATTERN = /<meta\s+property="og:title"\s+content="([^"]+)"/i;
 const JSON_LD_PATTERN = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
 
 export interface ResolvedProductPageData {
@@ -13,6 +14,12 @@ export interface ResolvedProductPageData {
   description: string | null;
   vendor: string | null;
   category: string | null;
+  name: string | null;
+  price: number | null;
+  /** Derived from JSON-LD offers[].availability (schema.org InStock/
+   *  LimitedAvailability/OutOfStock URL) — null if absent or unrecognized,
+   *  never guessed. */
+  in_stock: 'in_stock' | 'low_stock' | 'out_of_stock' | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -29,6 +36,31 @@ function isProductLd(value: unknown): value is Record<string, unknown> {
 function extractBrandName(brand: unknown): string | null {
   if (typeof brand === 'string') return brand;
   if (isRecord(brand) && typeof brand.name === 'string') return brand.name;
+  return null;
+}
+
+/** schema.org `offers` can be a single Offer object or an array of them
+ *  (confirmed live: Kapruka product pages use an array with one entry) —
+ *  the first entry is the one that matters here. */
+function extractFirstOffer(offers: unknown): Record<string, unknown> | null {
+  const offer = Array.isArray(offers) ? offers[0] : offers;
+  return isRecord(offer) ? offer : null;
+}
+
+function extractOfferPrice(offer: Record<string, unknown> | null): number | null {
+  if (!offer) return null;
+  const raw = offer.price;
+  const price = typeof raw === 'string' ? Number(raw) : typeof raw === 'number' ? raw : NaN;
+  return Number.isFinite(price) ? price : null;
+}
+
+/** schema.org availability is a URL like "http://schema.org/InStock" — matched
+ *  by suffix rather than parsed as a URL since some pages omit the scheme. */
+function extractOfferStock(offer: Record<string, unknown> | null): ResolvedProductPageData['in_stock'] {
+  const availability = offer && typeof offer.availability === 'string' ? offer.availability : '';
+  if (/InStock$/i.test(availability)) return 'in_stock';
+  if (/LimitedAvailability$/i.test(availability)) return 'low_stock';
+  if (/OutOfStock$/i.test(availability)) return 'out_of_stock';
   return null;
 }
 
@@ -49,11 +81,16 @@ function extractFromJsonLd(html: string): Partial<ResolvedProductPageData> {
     }
     if (!isProductLd(parsed)) continue;
 
+    const offer = extractFirstOffer(parsed.offers);
+
     return {
       description: typeof parsed.description === 'string' ? parsed.description.trim() : null,
       image_url: typeof parsed.image === 'string' ? parsed.image : null,
       vendor: extractBrandName(parsed.brand),
       category: typeof parsed.category === 'string' ? parsed.category : null,
+      name: typeof parsed.name === 'string' ? parsed.name.trim() : null,
+      price: extractOfferPrice(offer),
+      in_stock: extractOfferStock(offer),
     };
   }
   return {};
@@ -65,9 +102,11 @@ function extractFromJsonLd(html: string): Partial<ResolvedProductPageData> {
 function extractFromMeta(html: string): Partial<ResolvedProductPageData> {
   const image = html.match(OG_IMAGE_PATTERN);
   const description = html.match(OG_DESCRIPTION_PATTERN) ?? html.match(META_DESCRIPTION_PATTERN);
+  const title = html.match(OG_TITLE_PATTERN);
   return {
     image_url: image ? image[1] : null,
     description: description ? description[1] : null,
+    name: title ? title[1] : null,
   };
 }
 
@@ -107,6 +146,9 @@ export async function resolveProductFromPage(
       description: fromLd.description ?? fromMeta.description ?? null,
       vendor: fromLd.vendor ?? null,
       category: fromLd.category ?? null,
+      name: fromLd.name ?? fromMeta.name ?? null,
+      price: fromLd.price ?? null,
+      in_stock: fromLd.in_stock ?? null,
     };
 
     if (!data.image_url && !data.description) {
