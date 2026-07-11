@@ -373,6 +373,8 @@ export default function Home(): React.JSX.Element {
     productId: string,
     optimisticItems: UICartItem[],
     quantity?: number,
+    name?: string,
+    price?: number,
   ): void {
     const prevItems = cartItems;
     const prevTotal = cartTotal;
@@ -383,7 +385,7 @@ export default function Home(): React.JSX.Element {
     fetch('/api/cart/direct-action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: sessionId, action, productId, quantity }),
+      body: JSON.stringify({ sessionId: sessionId, action, productId, quantity, name, price }),
     })
       .then((res) => res.json())
       .then((data: { ok: boolean; items?: UICartItem[]; total?: number }) => {
@@ -408,7 +410,7 @@ export default function Home(): React.JSX.Element {
       ? cartItems.map((i) => (i.productId === product.id ? { ...i, quantity: i.quantity + qty } : i))
       : [...cartItems, { productId: product.id, name: product.name, price: product.price, quantity: qty, image_url: product.image_url ?? null }];
 
-    mutateCartDirect('add', product.id, optimisticItems, qty);
+    mutateCartDirect('add', product.id, optimisticItems, qty, product.name, product.price);
   }
 
   function handleQuantityChange(productId: string, newQuantity: number): void {

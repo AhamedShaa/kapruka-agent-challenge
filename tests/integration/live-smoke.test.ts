@@ -141,6 +141,57 @@ describe('Live System Integration', () => {
       await adapter.clearCart();
     }, TIMEOUT);
 
+    test('direct-action add sends name and price to skip getProduct', async () => {
+      // Simulates what the frontend SHOULD send to /api/cart/direct-action —
+      // see app/api/cart/direct-action/route.ts:63-69, which skips the
+      // getProduct round-trip entirely when name/price are both present.
+      // Calls the route handler in-process (like the 'SSE Streaming' describe
+      // block below) rather than fetching http://localhost:3000 — CI
+      // (.github/workflows/ci.yml) runs this suite without a dev server up.
+      const adapter = await getAdapter();
+      const { POST } = await import('../../app/api/cart/direct-action/route.js');
+
+      const searchResult = await adapter.search('flowers');
+      const partner = searchResult.products.find((p) => p.id.startsWith('EF_PC_'));
+      expect(partner, 'expected an EF_PC_* result for "flowers"').toBeDefined();
+      expect(partner!.price, 'search result should carry a price').not.toBeNull();
+
+      const request = new Request('http://localhost/api/cart/direct-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'test-cart-direct',
+          action: 'add',
+          productId: partner!.id,
+          quantity: 1,
+          name: partner!.name,
+          price: partner!.price,
+        }),
+      });
+
+      const response = await POST(request);
+      const data = await response.json() as { ok: boolean; items?: { productId: string }[] };
+      console.log(`direct-action add with name/price for ${partner!.id}: ok=${data.ok}`);
+
+      expect(data.ok).toBe(true);
+      expect(data.items?.some((i) => i.productId === partner!.id)).toBe(true);
+
+      await adapter.clearCart();
+    }, TIMEOUT);
+
+    // DOCUMENTS A CLIENT-SIDE CONTRACT, NOT SOMETHING THIS SUITE CAN ASSERT:
+    // the test above proves the route is correct when given name/price, but
+    // app/page.tsx's mutateCartDirect (the function ProductCard's "Add to
+    // Cart" button actually calls) never sends them — its fetch body is only
+    // { sessionId, action, productId, quantity }, even though handleAddToCart
+    // has product.name/product.price in hand. That forces every direct-action
+    // add through the getProduct fallback, which 404s 100% of the time for
+    // EF_PC_* partner-catalog products (docs/AGENT_BRIEFING.md), throwing
+    // 'No valid price available' and reverting the optimistic cart update —
+    // the "add to cart, item flashes, then disappears" bug. Fix: make
+    // handleAddToCart/mutateCartDirect in app/page.tsx include product.name
+    // and product.price in the direct-action request body.
+
     test('cart persists across sequential operations', async () => {
       const adapter = await getAdapter();
       const cakeProducts = await searchAndHydrate(adapter, 'birthday cake');
